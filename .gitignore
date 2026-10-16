@@ -4,3 +4,4 @@ external/gds/*.exe
 external/gds/extracted/
 captures/*.pcapng
 venv/
+ghidra-proj/
