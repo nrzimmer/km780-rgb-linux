@@ -78,11 +78,21 @@ state. Read commands (`0x8x`) are safe.
     tools/     our code (km780.py: transport + GET commands, read-only;
                extract.sh/view.sh: decode the USBPcap captures)
     captures/  the 11 USB captures of the vendor software: .pcapng (raw) and
-               (decoded payloads). Versioned — they are the evidence, and
+               .txt (decoded payloads). Versioned and **to keep until the
+               protocol is fully documented** — they are the evidence, and
                they cannot be recaptured without the Windows machine.
-    screenshots/ vendor UI screens referenced by the capture docs
+    screenshots/ the vendor UI: what the app was showing when each capture
+               was made. Also to keep — it is what ties a packet on the wire
+               to the control that produced it.
+    firmware/  recovery/: the three .hex files (FW 75/76/77), the MCU and the
+               procedure that got the keyboard out of the bootloader
     sessions/  transcript of the Windows session (not versioned, 22 MB)
     external/  third-party material: installers, the abandoned repo
+
+Nothing leaves `captures/` or `screenshots/` while there is still a gap in
+the specification. Reopening a question about a byte means going back to the
+packet and to the screen that produced it, and the Windows machine is not a
+resource one can assume will be available again.
 
 `START-HERE.txt` is the state summary brought over from the Windows machine:
 what Phase 1 closed, what is left in Phase 2, and the warning not to sweep
