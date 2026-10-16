@@ -33,7 +33,7 @@ goal of this project.
 | Vendor installers obtained and extracted | **done** — `docs/06-binaries.md` |
 | Decompilation of the vendor app | in progress — `docs/03`, `docs/06` |
 | Firmware + MCU identified | **done** — `docs/04-firmware.md` |
-| Ghidra 12.1.4 + GhidraMCP installed | **done** — `docs/07-tooling.md` |
+| RE tooling (Ghidra 12.1.4 + REA) | **done** — `docs/07-tooling.md` |
 | Analysis of `Setting.dll` in Ghidra | in progress |
 
 ## Three lines of attack

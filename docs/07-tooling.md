@@ -31,8 +31,10 @@ GhidraMCP and for building extensions from source).
 Extension installed in `~/.local/opt/ghidra/Ghidra/Extensions/GhidraMCP/`.
 Release 2.0 (2026-10-10), matching Ghidra 12.1.4.
 
-It is for **targeted** decompilation: list classes/methods, search by name,
-follow xrefs and decompile function by function — instead of dumping 2.9 MB of pseudo-C. That is how Ghidra works
+Installed, but in practice redundant with REA (see below), which solves the
+same problem with more reach. It is for **targeted** decompilation: list
+classes/methods, search by name, follow xrefs and decompile function by
+function — instead of dumping 2.9 MB of pseudo-C. That is how Ghidra works
 anyway:
 
 - **auto-analysis** sweeps the whole binary; it is unavoidable, costs minutes,
@@ -65,15 +67,69 @@ Created with:
         ~/src/km780-rgb-linux/ghidra-proj KM780 \
         -import external/gds/rgb-v2.04/payload/app/Setting.dll
 
-## Other LLM+RE projects evaluated
+## REA — Reverse Engineer Anything
 
-There is no GitHub project called "reverse engineer anything"; the name
-probably comes from GhidraMCP's description ("allowing LLMs to autonomously
-reverse engineer applications"). Alternatives considered:
+<https://github.com/morluto/rea> — `rea-agents` 6.5.0, MIT. **The main tool.**
+Installed globally with npm, without root (nvm's prefix is writable):
+
+    npm install --global rea-agents
+
+An MCP/CLI for reverse engineering that uses Hopper, Ghidra or IDA as a
+*provider*. In one package it covers **every line of work in this project**:
+native PE32 binary (`Setting.dll`), .NET assembly (the MX's `App.exe`),
+firmware, and packet captures.
+
+### Why it fits
+
+Two commands solve exactly the "decompile only until we find what we need"
+problem, without dumping 2.9 MB of pseudo-C into the context:
+
+    rea decompile <path> [address]    # read ONE part of the app as code
+    rea function <path> <addr>        # analyse ONE whole function, with evidence
+
+And two important flags:
+
+- `--snapshot <file>` — persists the analysis between calls, so Ghidra's very
+  expensive auto-analysis runs only once;
+- `--token-limit <n>` — caps the output size.
+
+Other commands useful here: `analyze`, `compare-managed-members` (an inventory
+of .NET members, for the MX app), `extract-firmware`,
+`annotate-native-function`, `execute-rizin-command`.
+
+### State of `rea doctor`
+
+`healthy: true`. Ghidra 12.1.4 passes all 8 checks:
+
+    configuration, platform (linux), architecture (x64), installation,
+    version (12.1.4), headless, native_decompiler (elf x86_64 matches
+    linux/x64), java (25.0.3, 64-bit JDK, accepts 21+)
+
+The remaining `missing_analysis_engine` entries are irrelevant to us:
+**Hopper** (requires macOS), **IDA** (no licence) and **JADX** (Android).
+
+### Registering it in Claude Code
+
+    rea setup --client claude_code --yes
+
+Two actions, both local and reversible:
+
+- registers the MCP in `~/.claude-personal/.claude.json`
+  (automatic backup in `.claude.json.rea.backup`)
+- installs the skill in `~/.claude-personal/skills/reverse-engineer-anything`
+
+The MCP tools only appear after restarting Claude Code; **the CLI works
+immediately**. Use `--dry-run` first to review the plan.
+
+`binwalk`/`unblob` are missing (REA uses them in `extract-firmware`) — they
+only matter for the firmware line of work, which is low priority.
+
+## Other LLM+RE projects evaluated
 
 | Project | Verdict |
 |---|---|
-| [GhidraMCP](https://github.com/LaurieWired/GhidraMCP) | **chosen** |
+| [REA](https://github.com/morluto/rea) | **chosen** — covers every line of work |
+| [GhidraMCP](https://github.com/LaurieWired/GhidraMCP) | installed as a Ghidra extension; redundant with REA |
 | [LLM4Decompile](https://github.com/albertan017/llm4decompile) | no use — x86-64 Linux only, our target is PE32 |
 | [GhidraGPT](https://github.com/weirdmachine64/ghidragpt) | one function at a time, no global analysis |
 | [Codex Decompiler](https://github.com/trailofbits/Codex-Decompiler) | from 2022, tested only up to Ghidra 10.3 |
