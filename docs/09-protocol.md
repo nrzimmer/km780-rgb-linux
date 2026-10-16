@@ -7,6 +7,19 @@
 > **[C]** confirmed in the binary or on hardware · **[I]** inferred, not
 > **[?]** unknown
 
+## Current scope
+
+**Phase 1 (now):** fully document the path to **change color and
+intensity** — section 6 (`0x09`/`0x89`, LED Matrix Database) and whatever it
+requires (paging, commit/apply, key map).
+
+**Phase 2 (later):** survey which messages are left and what each one does —
+sections 4, 5, 7 and 8.
+
+The lighting is **per key** [I]: the KM780 RGB has per-key RGB, the
+command is called "LED Matrix Database", and ~104 keys × 3 bytes (~312) do not
+fit in the 262 payload bytes, which by itself requires paging.
+
 ---
 
 ## 1. Transport layer  [C]
@@ -78,6 +91,8 @@ Whether there are commands outside this list is unknown.  [?]
 
 ---
 
+## PHASE 1 — color and intensity
+
 ## 4. `0x01` / `0x81` — Current Profile
 
 Selects or reads the active profile.
@@ -102,7 +117,7 @@ Number of profiles supported: **[?]** (the UI suggests several;
 
 ## 6. `0x09` / `0x89` — LED Matrix Database
 
-**The central command for static per-key color.**
+**The central command of Phase 1: static per-key color.**
 
 | Offset | Size | Field | Confidence |
 |---|---|---|---|
@@ -121,12 +136,17 @@ Open questions:
   its own?  **[?]**
 - Is there a commit/apply command after sending all the pages?  **[?]**
 - Do the side zones go into the same matrix or do they have a command of their own?  **[?]**
+- **Intensity:** is there a separate brightness (global or per key), or is brightness
+  only the magnitude of the RGB values?  **[?]**  The keyboard has a physical
+  brightness control, which suggests a register of its own — possibly outside the `0x09`.
 
 ### 6.1 Key → offset map  [?]
 
     (to be determined — and the most laborious item of the specification)
 
 ---
+
+## PHASE 2 — what is left
 
 ## 7. `0x08` / `0x88` — LED Effect Database
 
@@ -151,15 +171,28 @@ via `HidDevice_GetDevVersion`.
 
 ## 9. Known gaps
 
+### Phase 1 — these block the color change
+
 | # | Item | Section |
 |---|---|---|
 | 1 | layout of the `0x09` payload, channel order | 6 |
 | 2 | key → offset map and paging field | 6.1 |
 | 3 | commit/apply command | 6 |
-| 4 | format of the `0x08` and the effect catalog | 7 |
-| 5 | payloads de `0x01` e `0x02` | 4, 5 |
-| 6 | bytes 3–7 do ACK | 1.3 |
-| 7 | existence of undocumented commands | 3 |
+| 4 | how intensity/brightness is controlled | 6 |
+
+### Phase 2 — these complete the specification
+
+| # | Item | Section |
+|---|---|---|
+| 5 | format of the `0x08` and the effect catalog | 7 |
+| 6 | payloads de `0x01` e `0x02` | 4, 5 |
+| 7 | bytes 3–7 do ACK | 1.3 |
+| 8 | existence of undocumented commands | 3 |
+
+For gap 8, two approaches: scan `Setting.dll` for the command
+bytes that appear in the 37 packet builders (that gives the set the
+software actually uses), and probe the keyboard with unlisted `0x8x`, which are
+reads and therefore safe.
 
 ## Fontes
 

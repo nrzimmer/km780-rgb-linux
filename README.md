@@ -39,11 +39,15 @@ goal of this project.
 
 ## Order of work
 
-Document **the whole** protocol, field by field, **before** writing the
-tool. Do not stop at the minimum needed to light up one key: cover the
-four command pairs (`0x01/0x81`, `0x02/0x82`, `0x08/0x88`, `0x09/0x89`).
-The canonical specification is `docs/09-protocol.md`; the gaps are listed
-in its section 9.
+Document the protocol, field by field, **before** writing the tool.
+The canonical specification is `docs/09-protocol.md`.
+
+1. **Phase 1** — fully document the **color and intensity** path:
+   the `0x09`/`0x89` command (LED Matrix Database), its paging, the map
+   key→offset map and any commit/apply.
+2. **Phase 2** — work out which messages are left over and what each one does.
+
+The gaps of each phase are in section 9 of the specification.
 
 ## Three lines of attack
 
