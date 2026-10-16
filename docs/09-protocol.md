@@ -277,8 +277,14 @@ keys:
 144 bytes = **one byte per LED slot**, which is that channel's intensity
 on that LED. That explains why 144 fits comfortably: `8 + 144 = 152` of 264.
 
-Which channel is R, G and B is still **not determined** — it requires a hardware test
-or a USB capture.  [?]
+Which channel is R, G and B is still **not determined**. The firmware treats the three
+channels symmetrically (`FUN_000081b8` only clamps to 1..3 and copies 144
+bytes per channel, see `11-firmware.md`), so the mapping is a convention of the
+LED hardware — **probably only a hardware test or a USB capture
+resolve**.  [?]
+
+Independent confirmation from the firmware: each channel is read from a distinct 4 KB bank
+in the external SPI flash (`0x1070`, `0x2070`, `0x3070`).  [C]
 
 ### 6.3 There is no commit command  [C]
 
@@ -310,10 +316,11 @@ physical one — it is the hardware's LED scan order.
 - which channel (`buf[3]` = 1/2/3) corresponds to R, G and B  **[?]**
 - what the remaining 12 slots are (144 − 132)  **[?]**
 - does the `0x89` (read) return the matrix in the same format?  **[?]**
-- intensity: is there a separate global brightness, or is it only the magnitude of the bytes?
-  The keyboard has a physical brightness control, which suggests a register of its own —
-  candidates among the new commands `0x05`, `0x0A`, `0x0D`, `0x12`, `0x16`
-  **[?]**
+- intensity: the firmware keeps a brightness counter of its own, separate from the
+  LED values, and emits the **`0x0B` event** when it changes (see
+  `11-firmware.md`). The corresponding host→device command still has to be found;
+  `0x0B` is the natural candidate, being the write counterpart of the `0x8B`.
+  **[I]**
 
 ## PHASE 2 — what is left
 
