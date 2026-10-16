@@ -24,10 +24,11 @@ goal of this project.
 
 ## Status
 
-| Area | Status |
+| Area | State |
 |---|---|
 | USB transport (framing, endpoints, commands) | **known** — see `docs/01-transport.md` |
-| LED payload layout / key→offset map | **unknown** — that is the target |
+| LED payload layout | **known** — `docs/09-protocol.md` §6 |
+| key→LED slot map (132 slots) | **extracted** — `docs/10-key-map.md` |
 | Byte-by-byte protocol specification | in progress — `docs/09-protocol.md` |
 | Read-only probing tool | ready — `tools/km780.py` |
 | USB capture of the official software (Windows) | planned — `docs/02-usb-capture.md` |

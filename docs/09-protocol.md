@@ -105,8 +105,8 @@ abandoned repo suggested:
 | 0 | 1 | `0x07` — the **HID Report ID** (not a "magic") | [C] |
 | 1 | 1 | command | [C] |
 | 2 | 1 | index — profile? (written as `value + 1`, so 1-based) | [I] |
-| 3 | 1 | `0x00` — always zeroed in the paths seen | [C] |
-| 4 | 1 | **page number** (written as `counter + 1`, 1-based) | [C] |
+| 3 | 1 | depends on the command — in `0x09` it is the **color channel** | [C] |
+| 4 | 1 | depends on the command — page in `0x8B`/`0x92`, `0` in `0x09` | [C] |
 | 5 | 1 | a boolean flag, meaning depends on the command | [I] |
 | 6–7 | 2 | they exist but are not written on the paths seen | [?] |
 | 8 | 256 | payload | [C] |
@@ -246,36 +246,74 @@ Number of profiles supported: **[?]** (the UI suggests several;
 
 ---
 
-## 6. `0x09` / `0x89` — LED Matrix Database
+## 6. `0x09` / `0x89` — LED Matrix Database  [C]
 
-**The central command of Phase 1: static per-key color.**
+**Solved.** Decompiled from `FUN_100d6b80` (`Setting.dll` v2.04; the command's
+site is at `0x100d6c12`).
 
-| Offset | Size | Field | Confidence |
+### 6.1 Packet format
+
+| Offset | Tam | Field | Value |
 |---|---|---|---|
-| 2 | ? | page index / block offset | [I] |
-| ? | ? | RGB data | [?] |
+| 0 | 1 | Report ID | `0x07` |
+| 1 | 1 | command | `0x09` |
+| 2 | 1 | profile | index + 1 (1-based) |
+| 3 | 1 | **color channel** | `1`, `2` or `3` |
+| 4 | 1 | — | `0x00` |
+| 5–7 | 3 | — | `0x00` |
+| 8 | 144 | **one byte per LED slot** | intensity 0–255 |
+| 152–263 | 112 | unused | `0x00` |
 
-Open questions:
+### 6.2 One packet per channel, not per page  [C]
 
-- Channel order: R/G/B or B/G/R?  **[?]**
-- Bytes per key: 3 (RGB) or more (with brightness)?  **[?]**
-- **Paging: partly settled.** The page field is `buf[4]`, 1-based
-  (see section 2). In `FUN_100db460` the loop accumulates into a **768-byte** buffer
-  (`memset(.., 0x300)`, three areas of 256), which suggests **3 pages of 256
-  bytes**. Whether the `0x09` uses the same geometry still has to be confirmed.  [I]
-- Key order: physical (matrix scan), by scancode, or by an index of
-  its own?  **[?]**
-- Is there a commit/apply command after sending all the pages?  **[?]**
-- Do the side zones go into the same matrix or do they have a command of their own?  **[?]**
-- **Intensity:** is there a separate brightness (global or per key), or is brightness
-  only the magnitude of the RGB values?  **[?]**  The keyboard has a physical
-  brightness control, which suggests a register of its own — possibly outside the `0x09`.
+This was the most important open question, and the answer is not paging of
+keys:
 
-### 6.1 Key → offset map  [?]
+**A complete update is 3 packets**, one per channel. Each packet carries 144
+    buf[3] == 2  ->  o 2o byte
+    buf[3] == 3  ->  o 3o byte
 
-    (to be determined — and the most laborious item of the specification)
+**A complete update is 3 packets**, one per channel. Each packet carries
+144 bytes = **one byte per LED slot**, which is that channel's intensity
+on that LED. That explains why 144 fits comfortably: `8 + 144 = 152` of 264.
 
----
+Which channel is R, G and B is still **not determined** — it requires a hardware test
+or a USB capture.  [?]
+
+### 6.3 There is no commit command  [C]
+
+The third packet closes the update. The timing observed:
+
+    for channel in (1, 2, 3):
+        build packet
+        SetFeature(buf, 0x108)
+        Sleep(20 ms)
+        if channel == 3:
+            Sleep(100 ms)       # an extra wait after the last one
+
+That is: 20 ms after each channel, plus 100 ms after the third. No separate
+apply command.
+
+### 6.4 Key → slot map  [C]
+
+**Extracted.** Table at `0x1023b3b0` in `.data`, 132 slots, every key
+identified. It has its own document: **`10-key-map.md`**.
+Regenerar com `tools/dump_keymap.py`.
+
+Formato: linhas de 8 bytes, `dword0` = virtual-key code do Windows (ou ID
+≥ `0x800` for the G keys and zones), `dword1` = USB HID usage code.
+**The row's position is the slot index.** The order is not the keyboard's
+physical one — it is the hardware's LED scan order.
+
+### 6.5 Open
+
+- which channel (`buf[3]` = 1/2/3) corresponds to R, G and B  **[?]**
+- what the remaining 12 slots are (144 − 132)  **[?]**
+- does the `0x89` (read) return the matrix in the same format?  **[?]**
+- intensity: is there a separate global brightness, or is it only the magnitude of the bytes?
+  The keyboard has a physical brightness control, which suggests a register of its own —
+  candidates among the new commands `0x05`, `0x0A`, `0x0D`, `0x12`, `0x16`
+  **[?]**
 
 ## PHASE 2 — what is left
 
@@ -302,14 +340,16 @@ via `HidDevice_GetDevVersion`.
 
 ## 9. Known gaps
 
-### Phase 1 — these block the color change
+### Phase 1 — nearly closed
 
-| # | Item | Section |
+| # | Item | Status |
 |---|---|---|
-| 1 | layout of the `0x09` payload, channel order | 6 |
-| 2 | key → offset map (the page field is already known: `buf[4]`) | 6.1 |
-| 3 | commit/apply command | 6 |
-| 4 | how intensity/brightness is controlled | 6 |
+| 1 | layout of the `0x09` payload | **solved** — section 6.1 |
+| 2 | paging | **solved** — it is 1 packet per channel, section 6.2 |
+| 3 | commit/apply command | **solved** — there is none, section 6.3 |
+| 4 | key → slot map | **solved** — `10-key-map.md` |
+| 5 | which channel is R, G, B | open — requires hardware or a capture |
+| 6 | how intensity/brightness is controlled | open |
 
 ### Phase 2 — these complete the specification
 
