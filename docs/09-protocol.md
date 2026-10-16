@@ -1,7 +1,7 @@
 # KM780 RGB protocol — specification
 
-> **Status:** incomplete. This is the canonical document; the others (`01`, `06`,
-> `08`) are the trail of how we got here.
+> **Status:** Phase 1 closed, Phase 2 open. This is the canonical document;
+> the others (`01`, `06`, `08`) are the trail of how we got here.
 >
 > Confidence convention for each field:
 > **[C]** confirmed in the binary or on hardware · **[I]** inferred, not
@@ -9,16 +9,17 @@
 
 ## Current scope
 
-**Phase 1 (now):** fully document the path to **change color and
-intensity** — section 6 (`0x09`/`0x89`, LED Matrix Database) and whatever it
-requires (paging, commit/apply, key map).
+**Phase 1 — closed.** Color and intensity are documented and confirmed on
+hardware: color in `0x09` (section 6), intensity in byte 11 of `0x02`
+(section 6.6), the slot map confirmed by two independent sources
+(section 6.5). The color tooling for Linux can be written.
 
-**Phase 2 (later):** survey which messages are left and what each one does —
-sections 4, 5, 7 and 8.
+**Phase 2 (now):** work out which messages are left and what each one does —
+sections 4, 7, and the commands still without semantics (`0x05`, `0x07`,
+`0x0D`, `0x12`, `0x16`).
 
-The lighting is **per key** [I]: the KM780 RGB has per-key RGB, the
-command is called "LED Matrix Database", and ~104 keys × 3 bytes (~312) do not
-fit in the 262 payload bytes, which by itself requires paging.
+The lighting is **per key** [C]: 144 slots of 1 byte per channel, 132 of them
+used, one packet per channel.
 
 ---
 
@@ -224,25 +225,110 @@ unobserved `0x8x` values (reads are safe).
 
 ## PHASE 1 — color and intensity
 
-## 4. `0x01` / `0x81` — Current Profile
+## 4. `0x01` / `0x81` — Current Mode  [C]
 
-Selects or reads the active profile.
+Selects (`0x01`) or reads (`0x81`) the **active mode** (M1/M2/M3 in the UI).
+The UI's "profile" is a PC-side concept and does not exist in the protocol —
+ver `16-capture-05-macros.md` §0.
+
+    07 01 02 00 00 00 00 00  00 ... (rest zeroed)
+          ^^ mode number, 1-based
 
 | Offset | Size | Field | Confidence |
 |---|---|---|---|
-| 2 | ? | profile index | [?] |
-| ... | | **to be determined** | [?] |
+| 2 | 1 | mode number, 1-based (1–3) | [C] |
+| 3–263 | 261 | zero | [C] |
 
-Number of profiles supported: **[?]** (the UI suggests several;
-`LIGHTING_PROFILE_%d` indicates numbering)
+`0x81`'s answer has the same format: `07 81 01` = mode 1 active.
+**There are 3 modes.**
 
 ---
 
-## 5. `0x02` / `0x82` — Profile Information
+## 5. `0x02` / `0x82` — Mode Information
+
+> The command's name in the binary is "Profile Information", but what it
+> carries is a **mode** (M1/M2/M3). See `16-capture-05-macros.md` §0.
+
+Solved in the `01-open`, `02-brightness` and `05-macros` captures (`docs/12`,
+`docs/13`, `docs/16`).
+Read and write use **the same 264-byte layout**: the official app reads the
+profile with `0x82` and rewrites it unchanged with `0x02` at boot.
 
 | Offset | Size | Field | Confidence |
 |---|---|---|---|
-| | | **to be determined** | [?] |
+| 0 | 1 | `0x07`, magic | [C] |
+| 1 | 1 | `0x82` (get) / `0x02` (set) | [C] |
+| 2 | 1 | **mode number, 1-based** (1, 2, 3) | [C] |
+| 3 | 1 | `0x03` in the answer, `0x00` on the write — a status flag | [C] |
+| 4–7 | 4 | zero | [C] |
+| **8** | 1 | **polling rate: bInterval em ms** (1, 2, 4, 8 = 1000/500/250/125 Hz) | **[C]** |
+| 9 | 1 | `00` in everything seen | [?] |
+| **10** | 1 | **active effect ID** (0 = static; see section 7.1) | **[C]** |
+| **11** | **1** | **intensity / brightness, 0–4** | **[C]** |
+| 12–14 | 3 | the effect's **direction** (see 7.2) | [C] |
+| 15–71 | 57 | 4-byte records; the 4th of each is the **duration** (see 7.2) | [I] |
+| 72–105 | 34 | the rest of the configuration block | [?] |
+| 106 | 1 | a flag alternating between the two writes of each action | [C] |
+| 107 | 1 | [?] | [?] |
+| 108 | 1 | lighting toggle (all lighting or volume display) | [I] |
+| 109–117 | 9 | **three RGB triples** stored in the profile (pure green from the factory) | [I] |
+| 118 | 1 | zero | [?] |
+| **119** | 1 | **volume display** (0/1) | [I] |
+| **120–263** | **144** | **key assignment table**: 1 byte per slot, the HID usage of the assigned function (see 5.1) | **[C]** |
+
+### 5.1 The table at bytes 120–263
+
+One byte per slot, in the same order `dump_keymap.py` extracted from
+`Setting.dll`, with `00` in the first 6 (G keys) and `00` in the last 12 (unused
+slots). That confirms the slot map on hardware.
+
+But the value is **not fixed**: it is the **HID usage of the function assigned to the key**.
+Assigning Ctrl to G6 changed byte 125 (slot 5) from `00` to `e0` (LeftCtrl);
+assigning a macro to G1 changed byte 120 (slot 0) to `b4`, which looks like
+the code for "run macro". From the factory each entry matches the HID usage
+of the key itself because nothing was remapped. See `16-capture-05-macros.md` §3.
+
+### 5.2 The byte is a function code  [C]
+
+The KEY ASSIGNMENT dialog offers nine types per key, and they all write into the
+**same byte** of the table. The code space is divided into ranges:
+
+| Range | Meaning |
+|---|---|
+| `0x00` | no function (Default/Disable on a G key) |
+| `0x04`–`0xE7` (low) | HID usage — "Keyboard" type (e.g. `0xE0` = LeftCtrl) |
+| `0xA5`–`0xAB` | Multimedia |
+| `0xB4` | Macro |
+| `0xB8` | Text |
+| `0xC0`–`0xC8` | Windows Shortcuts (with a hole at `C3`, `C4`) |
+| `0xCE`–`0xD5` | Mouse Function |
+
+The complete map, item by item, is in `17-capture-06-key-assignment.md`. The
+high ranges do not collide with the HID usages the keyboard uses (`0x04`–`0x65`,
+`0xE0`–`0xE7`), so **one byte is enough** to address any function.
+
+A cross-check: the Multimedia codes (`a5`–`a9`) are exactly the ones the factory
+table already carries in the slots of the physical media keys (105–107, 115,
+(105–107, 115, 116) em `10-key-map.md`.
+
+Macro and Text need extra data, which goes into the `0x0A` database page `0x09`
+(names) and `0x05` (content), indexed by `buf[3]`. A **Text**'s content never
+appeared on the wire — see `docs/17` §7.
+
+### 5.3 Read and write are the same structure  [C]
+
+`0x82` returns **byte for byte** what `0x02` wrote: across the 264 bytes the
+only field that differs is byte 3 (`0x00` on the write, `0x03` in the answer).
+Confirmado em `20-capture-09-dump-read.md` §1.
+
+Hence the safe operating model for the Linux tooling:
+
+> read the mode with `0x82`, change the desired byte, write it back with `0x02`
+
+There is no need to understand the fields still marked `[?]` in order to touch
+the ones marked `[C]`: the unknown ones travel intact through the round-trip.
+
+**There are 3 modes.** The app reads and writes exactly modes 1, 2 and 3.
 
 ---
 
@@ -340,68 +426,249 @@ Formato: linhas de 8 bytes, `dword0` = virtual-key code do Windows (ou ID
 **The row's position is the slot index.** The order is not the keyboard's
 physical one — it is the hardware's LED scan order.
 
-### 6.6 Open
+### 6.6 Intensity — solved  [C]
 
-- which channel (`buf[3]` = 1/2/3) corresponds to R, G and B  **[?]**
-- what the remaining 12 slots are (144 − 132)  **[?]**
-- does the `0x89` (read) return the matrix in the same format?  **[?]**
-- intensity: the firmware keeps a brightness counter of its own, separate from the
-  LED values, and emits the **`0x0B` event** when it changes (see
-  `11-firmware.md`). The corresponding host→device command still has to be found;
-  `0x0B` is the natural candidate, being the write counterpart of the `0x8B`.
-  **[I]**
+Intensity is **not in `0x09`**. It is **byte 11 of the profile payload**
+(`0x02`), with values **0 to 4** — five levels, the same ones the UI offers.
+
+Confirmed in `captures/02-brightness.pcapng`: walking through all the UI's
+levels, the only byte that varies across the 12 `0x02` packets of the active
+profile is byte 11, in the sequence `00 00 01 02 03 04`. The `0x09` packets sent
+alongside keep their color values intact (`0xFF` on channel R), that is, **the
+firmware applies the brightness; the host does not pre-multiply the color**.
+
+`11-firmware.md`'s hypothesis (command `0x0B` as the counterpart of the
+brightness) **did not hold**: the official app never sends `0x0B`. The `0x0B` remains
+the device→host event for a brightness change from the keyboard's own keys.
+
+### 6.7 Still open
+
+- what the remaining 12 slots are (144 − 132) — they are always zeroed, so they
+  simply do not exist  **[I]**
+- beyond those, **10 slots within the 132 also have no physical key** in the
+  layout US/ABNT: 16, 32, 35, 68, 71, 80, 85, 88, 91, 129  **[C]**
+- does `0x89` (read) return the matrix in the same format — **yes**, confirmed
+  em `20-capture-09-dump-read.md` §3  **[C]**
 
 ## PHASE 2 — what is left
 
-## 7. `0x08` / `0x88` — LED Effect Database
+## 7. Animated effects  [C]
 
-Animated effects run by the firmware.
+Full detail in `15-capture-04-effects.md`.
 
-| Offset | Size | Field | Confidence |
-|---|---|---|---|
-| | | **to be determined** | [?] |
+### 7.1 The active effect is byte 10 of the mode
 
-Open questions: the effect catalog and their IDs; per-effect parameters
-(speed, direction, color); whether an effect can coexist with static colors.
+| byte 10 | Effect | Helper commands |
+|---|---|---|
+| `0x00` | **none** (effects off) | — |
+| `0x01` | Wave | — |
+| `0x02` | Ripple | `0x0B` ×3 channels, `buf[4]=0x00` |
+| `0x03` | Sonic | `0x0B` ×3 channels, `buf[4]=0x01` |
+| `0x04` | Breathing | — |
+| `0x07` | Changeling | `0x0E` (`04 03 fc`) + `0x15` ×3 channels |
+| `0x08` | **Checkpoint** — uses "Transition Point" (number of keys) instead of duration/direction | — |
+| `0x09` | Cycle | `0x0E` (zeroed) |
+| `0x0A` | Rain | `0x0F` (`03 03 fc`) + `0x12` ×3 channels |
+
+Only `0x05` and `0x06` are missing: the UI offers exactly 8 effects, all mapped.  [?]
+
+The "×3 channels" commands use `buf[3] = 1, 2, 3` — the same R/G/B convention as the
+`0x09`. They came with a zeroed payload in the capture, so they are a per-key mask
+or color that has not been exercised yet.  [I]
+
+### 7.2 Duration and direction, in the mode's config block
+
+4-byte records starting at byte 12 (15 records, bytes 12–71):
+
+- bytes 12, 13, 14 — **direction**: `0`=Up, `1`=Down, `2`=Left, `3`=Right
+  (confirmed against the UI), written identically in all three positions
+- the 4th byte of each record — **duration**; the first three (bytes 15, 19, 23)
+  store **2×** the UI's value, the rest 1×  [C]
+- **each effect keeps its own duration**: switching effect and coming back
+  restores the previous value, and the mode payload carries only the active
+  (`21-capture-10-limits.md` §4)  **[C]**
+
+### 7.3 `0x08` — the rasterized gradient  [C]
+
+Sent with `buf[2]` = mode. **69 data bytes (8–76) = 3 channels × 23 steps**: the
+effect's gradient interpolated step by step, per channel, **cyclically** (the
+last step wraps to the first, because the effect loops).
+
+An example with a 2-stop gradient, red at 0 and blue at 100:
+
+    R:  252 252 252 252 252 124 124 124 124 124 124   0 …   0 124 124 124 124 124 124
+    G:    0   0   0   0   0   0   0   0   0   0   0   0 …   0   0   0   0   0   0   0
+    B:    0   0   0   0   0 124 124 124 124 124 124 252 … 252 124 124 124 124 124 124
+
+G is zero across the 23 steps because there is no green in the gradient; R falls
+and rises again at the end, B mirrors it.
+
+Values quantized to **6 bits, stored shifted left by 2**:
+`00 38 4c 60 7c 98 c4 e0 fc` = 0, 14, 19, 24, 31, 38, 49, 56, 63.
+
+Detail and validation in `21-capture-10-limits.md` §3.
+
+### 7.4 The effect database: `0x0A` subpages `02`/`05`/`08`  [C]
+
+    00 <duration> <direction> <N>   followed by N stops of 5 bytes
+
+| Campo | Significado |
+|---|---|
+| byte 1 | duration, in seconds (the UI's value directly) |
+| byte 2 | direction: `0`=Up, `1`=Down, `2`=Left, `3`=Right |
+| byte 3 | **number of color stops** |
+| 5 bytes per stop | `R G B <intensity> <position>`, both 0–100 |
+
+Exemplo real com 4 paradas:
+
+    00 03 03 04 | ff 00 00 64 00 | ff ff ff 64 17 | 00 ff 00 16 2f | 00 00 ff 64 64
+                   red              white            green            blue
+                   int 100 pos 0    int 100 pos 23   int  22 pos 47   int 100 pos 100
+
+Validated by working the Color Controller: changing a stop's color changed only
+its RGB; dragging horizontally changed only the position; dragging vertically
+changed only the intensity; and adding a fourth stop incremented byte 3.
+Ver `19-capture-08-closing.md` §1.
+
+The stop count also appears in the mode payload, at bytes 75–77.
+
+The effect names sit in subpages `00`/`03`/`06`, in ASCII.
 
 ---
 
-## 8. Initialization sequence  [?]
+## 7b. `0x05` — macro content  [C]
 
-What the official software sends on startup, before any change.
-**To be determined** — probably `0x81` (read profile) and version queries
-via `HidDevice_GetDevVersion`.
+Sent in three banks: `buf[2]` = mode, `buf[3] = 0x00`, `buf[4] = 1, 2, 3`.
+Only bank 1 carried data in the capture.
+
+    byte 8–9   header `00 01` — the macro's index/counter  [I]
+    byte 10+   3-byte records: [flag] [delay] [HID usage]
+
+- **flag** — bit 7: `1` = press, `0` = release. The **low nibble** carries the
+  bits altos do delay.
+- **delay** — `((flag & 0x0F) << 8) | delay_byte`, in units of **10 ms**.
+  A single byte saturates at 2.55 s; with the extension the ceiling goes to ~41 s.
+- **HID usage** — the key. **Modifiers are ordinary keys** (`0xE0` =
+  LeftCtrl), there is no modifier field.
+
+Validated against an `A B C` macro (`docs/16` §1) and against a macro with an
+8.65 s pause and another with Ctrl+C (`docs/21` §1 and §2): in all of them,
+events and delays match one for one what the app shows on screen.
+
+The official UI **does not allow mouse events inside a macro**, only keys.
+A mouse function is a **type of key assignment**, a separate path: see 5.2.
+ver 5.2.
+
+### All three banks are mandatory  [C]
+
+---
+
+## 7c. `0x0A` / `0x8A` — page-indexed database  [C]
+
+| Page (`buf[2]`) | Content |
+|---|---|
+| `0x00` | nomes: `ProfileN`, `Mode1`, `Mode2`, `Mode3` |
+| `0x09` | the **macro and text** database (names in ASCII) |
+| `0x1b` | base do **mode 1** |
+| `0x1c` | base do **mode 2** |
+| `0x1d` | base do **mode 3** |
+
+The three mode pages have an identical structure:
+
+| Subpage (`buf[3]`) | Content |
+|---|---|
+| `00`, `03`, `06` | effect name in ASCII (`Default Wave`) |
+| `01`, `04`, `07` | zeroed |
+| `02`, `05`, `08` | effect parameters (see 7.4) |
+| `0a` | **(id, value) pairs** of settings |
+
+### (id, value) pairs in subpage `0a`
+
+It always appears in a pair, in the middle of the mode write: `buf[3]=0x09` with a zeroed
+payload, followed by `buf[3]=0x0a` with data. `buf[2]` is the page of the active mode.
+
+    07 0a 1b 0a 00 00 00 00  00 00 01 <id> <value> 00 ...
+
+| Offset | Field | Confidence |
+|---|---|---|
+| 2 | mode page (`0x1b`/`0x1c`/`0x1d`) | [C] |
+| 3 | subpage — `0x09` (empty) / `0x0a` (data) | [C] |
+| 10 | `0x01` — a pair counter? | [I] |
+| 11 | **parameter id** — `0x1f` at rest, `0x05` for the repeat delay | [C] |
+| 12 | **value** — 0–3 in the repeat delay | [C] |
+
+Detail in `14-capture-03-config.md` §3. In the init the same address
+`1b/09`, `1b/0a` is **read** with `0x8A` (reply pure `0xFF`), which confirms
+that `0x0A`/`0x8A` are the write and the read of the same base indexed by
+`buf[2]`/`buf[3]`.
 
 ---
 
 ## 9. Known gaps
 
-### Phase 1 — nearly closed
+Settled in `captures/01-open.pcapng` — detail in `docs/12-capture-01-open.md`.
+It is 28 packets in 3.2 s:
+
+    07 16 01                     opens the session
+    07 0d 00                     enters configuration mode
+    07 8a 00 00..03              reads 0x8A page 0 (all 0xFF)
+    07 81 00                     reads the active profile  -> 07 81 01
+    07 82 01 / 02 / 03           reads the information of the 3 profiles
+    07 8a 1b/1c/1d 00,01,02,09,0a   reads more pages of 0x8A (all 0xFF)
+    07 02 01 <256 bytes>         rewrites profile 1 unchanged
+    07 0d 01                     leaves configuration mode
+    07 07 00 15                  command 0x07, until then unknown
+
+`0x0D` appears as a begin/end pair (arg `00` before the writes, `01` after).
+`0x16` is always the first message.
+
+---
+
+## 9. Known gaps
+
+### Phase 1 — closed
 
 | # | Item | Status |
 |---|---|---|
 | 1 | layout of the `0x09` payload | **solved** — section 6.1 |
 | 2 | paging | **solved** — it is 1 packet per channel, section 6.2 |
 | 3 | commit/apply command | **solved** — there is none, section 6.3 |
-| 4 | key → slot map | **solved** — `10-key-map.md` |
+| 4 | key → slot map | **solved** — `10-key-map.md`, confirmed on hardware |
 | 5 | which channel is R, G, B | **solved** — 1=R, 2=G, 3=B, tested on hardware |
-| 6 | how intensity/brightness is controlled | **the only open item in Phase 1** |
+| 6 | how intensity/brightness is controlled | **solved** — byte 11 of the `0x02`, section 6.6 |
 
-### Phase 2 — these complete the specification
+### Phase 2 — what is missing
 
-| # | Item | Section |
+| # | Item | Status |
 |---|---|---|
-| 5 | format of the `0x08` and the effect catalog | 7 |
-| 6 | payloads de `0x01` e `0x02` | 4, 5 |
-| 7 | bytes 3–7 of the ACK (and whether the ACK matters, since the official app ignores it) | 1.3 |
-| 8 | the complete command set — 15 mapped so far, but it is a floor (see 3.3) | 3 |
-| 9 | meaning of `buf[2]`, `buf[5]`, and of bytes 6–7 of the header | 2 |
+| 1 | effect catalog | **solved** — the 8 from the UI, with ID and name, section 7.1 |
+| 2 | macro format (`0x05`) | **solved** — section 7b |
+| 3 | payload of `0x01` / `0x02` | **solved** — sections 4 and 5 |
+| 4 | `0x0A`/`0x8A` | **solved** — per-page base, section 7c |
+| 5 | key assignment table | **solved** — section 5.1 |
+| 6 | payload of the `0x08` | **solved** — rasterized gradient, 3 channels × 23 steps, section 7.3 |
+| 7 | `0x0B`, `0x0E`, `0x0F`, `0x12`, `0x15` | identified as per-effect data; **per-key payload never exercised** — the effect is global in the UI [I] |
+| 8 | `0x07`, `0x0D`, `0x16` | role known (opening / frame / end of init), payload never varied [I] |
+| 9 | byte 108 vs byte 119 | they are **two distinct toggles**; likely assignment 119=volume display, 108=all lighting [I] — `docs/19` §4 |
+| 10 | bytes 72–107 of the config block | partial: 75–77 = number of color stops |
+| 11 | `buf[5]` and bytes 6–7 of the header | they came out zero in everything captured [?] |
+| 12 | device→host events on EP `0x83` | **`f6 01 XX YY` solved** = (column, row) of the physical matrix, `docs/18` §3; `02 04 01 08 01` still [?] |
+| 13 | effect IDs `0x05` and `0x06` | they do not exist in the UI [?] |
+| 14 | key function codes | **solved** — section 5.2 and `docs/17` |
+| 14b | the content of a **Text** | **does not go to the keyboard**, not even on "Save to Device Memory" — `docs/18` §6 [C] |
+| 14c | Disable vs Default | **solved** — Disable writes `0x00`, Default restores the native HID, `docs/18` §1 |
+| 15 | LED Sleep | not captured yet |
+| 17 | the macro's Playback Option | a dropdown of 4 options, byte not located — `docs/21` §6 |
+| 15b | Timer Key | it is a **key on the keyboard**, not a setting: it emits `f6 01 04 07` — `docs/19` §5 |
+| 15c | OSD (On Screen Display) | it belongs to the app, drawn on the PC screen; it generates no USB traffic |
+| 16 | Static Base Color | **it is not a separate path** — it is the inverse of "Enable Lighting Effect", `docs/18` §7 |
 
-For gap 8, two approaches: extract the command bytes from all 37
-packet builders (that gives the set the software actually uses — that is how
-`0x8B` and `0x92` showed up), and probe the keyboard with unlisted `0x8x`,
-which are reads and therefore safe.
+**Command set observed on the wire** (14 write + 4 read):
 
+    0x01 0x02 0x05 0x07 0x08 0x09 0x0A 0x0B 0x0D 0x0E 0x0F 0x12 0x15 0x16
+    0x81 0x82 0x89 0x8A
+
+The list in `3.1` is still a floor: only what the UI exercises shows up.
 ## Fontes
 
 - Transport: `legonigel/KM780-RGB-Linux-Driver` (`src/keyboard.cpp`),
@@ -409,3 +676,21 @@ which are reads and therefore safe.
 - Interfaces and endpoints: `lsusb -v` on the user's machine
 - Official binaries: `06-binaries.md`
 - Addresses in `Setting.dll`: `08-setting-dll.md`
+
+---
+
+## 10. Still open, in one list
+
+After 10 captures, what is left:
+
+| Item | Why it is still open |
+|---|---|
+| `0x0B`, `0x0E`, `0x0F`, `0x12`, `0x15` with per-key data | the UI only applies a global effect; **a capture cannot settle it**, only decompilation |
+| the byte carrying the macro's **Playback Option** | not located |
+| byte 108 vs byte 119 | they are two distinct toggles; which is which is still unsaid |
+| bytes 72–107 of the config block | partially mapped (75–77 = number of stops) |
+| `buf[5]` and bytes 6–7 of the header | they came back zero in everything captured |
+| the `02 04 XX 08` event | third byte = mode; the rest unknown |
+| effect IDs `0x05` and `0x06` | they do not exist in the UI |
+| LED Sleep | the control was never captured |
+| reading page `0x09` (macros) | the app never reads it; safe to test on Linux |

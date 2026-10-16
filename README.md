@@ -24,17 +24,22 @@ goal of this project.
 
 ## Status
 
-| Area | Status |
+| Area | State |
 |---|---|
 | USB transport (framing, endpoints, commands) | **known** — see `docs/01-transport.md` |
 | LED payload layout | **known** — `docs/09-protocol.md` §6 |
-| key→LED slot map (132 slots) | **extracted** — `docs/10-key-map.md` |
-| Byte-by-byte protocol specification | in progress — `docs/09-protocol.md` |
-| **Color protocol validated on hardware** | **done** — write and read confirmed |
+| Key → LED slot map (132 slots) | **confirmed 4x** — `docs/10-key-map.md` |
+| Physical matrix map (column, row) | **method known** — `docs/18` §3 |
+| Byte-by-byte protocol specification | Phase 1 closed — `docs/09-protocol.md` |
+| **Color protocol validated on hardware** | **done** — writes and reads confirmed |
+| **Intensity (brightness)** | **solved** — byte 11 of `0x02`, `docs/13` |
 | Read-only probing tool | ready — `tools/km780.py` |
-| USB capture of the official software (Windows) | planned — `docs/02-usb-capture.md` |
-| Official installers obtained and extracted | **done** — `docs/06-binaries.md` |
-| Decompilation of the official app | in progress — `docs/03`, `docs/06` |
+| USB capture of the vendor software (Windows) | **done** — `docs/12` to `docs/21`, 11 captures |
+| Read confirmed symmetric to write | **done** — `docs/20` §1 |
+| Animated effect catalogue | **solved** — the 8 in the UI, `docs/15`, `docs/16` |
+| Macro format and key assignment | **solved** — `docs/16`, `docs/17` |
+| Vendor installers obtained and extracted | **done** — `docs/06-binaries.md` |
+| Decompilation of the vendor app | in progress — `docs/03`, `docs/06` |
 | Firmware + MCU identified | **done** — `docs/04-firmware.md` |
 | RE tooling (Ghidra 12.1.4 + REA) | **done** — `docs/07-tooling.md` |
 | Analysis of `Setting.dll` in Ghidra | in progress |
@@ -69,7 +74,16 @@ state. Read commands (`0x8x`) are safe.
 
 ## Layout
 
-    docs/      documentation by area of work
-    tools/     our own code (km780.py: transport + GET commands, read-only)
-    captures/  .pcapng files from the USB captures (not versioned)
+    docs/      documentation, one per line of work
+    tools/     our code (km780.py: transport + GET commands, read-only;
+               extract.sh/view.sh: decode the USBPcap captures)
+    captures/  the 11 USB captures of the vendor software: .pcapng (raw) and
+               (decoded payloads). Versioned — they are the evidence, and
+               they cannot be recaptured without the Windows machine.
+    screenshots/ vendor UI screens referenced by the capture docs
+    sessions/  transcript of the Windows session (not versioned, 22 MB)
     external/  third-party material: installers, the abandoned repo
+
+`START-HERE.txt` is the state summary brought over from the Windows machine:
+what Phase 1 closed, what is left in Phase 2, and the warning not to sweep
+unknown commands on the keyboard.

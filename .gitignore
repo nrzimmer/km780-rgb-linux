@@ -9,7 +9,10 @@ ghidra-proj/
 venv/
 firmware/*.bin
 
-# Keyboard state and captures (machine-specific)
+# Keyboard state (machine-specific)
 backup-matrix*.json
 snap-*.json
-captures/*.pcapng
+
+# Windows session transcript: 22 MB, it is scrollback, not evidence.
+# Stays on disk but out of the index.
+sessions/
