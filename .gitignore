@@ -5,3 +5,4 @@ external/gds/extracted/
 captures/*.pcapng
 venv/
 ghidra-proj/
+firmware/*.bin

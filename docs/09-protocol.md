@@ -26,11 +26,38 @@ fit in the 262 payload bytes, which by itself requires paging.
 
 USB device `28da:1101`, three HID interfaces:
 
-| Interface | Protocol | Endpoint | Papel |
-|---|---|---|---|
-| 0 | 1 (Keyboard) | `0x81` IN | HID keyboard — do not touch |
-| 1 | 2 (Mouse) | `0x82` IN | command output |
-| 2 | 0 | `0x83` IN | reply input |
+| Interface | Protocol | Endpoint | Report desc. | Papel |
+|---|---|---|---|---|
+| 0 | 1 (Keyboard) | `0x81` IN | 65 B | HID keyboard — do not touch |
+| 1 | 2 (Mouse) | `0x82` IN | 252 B | command output (Feature report ID 7) |
+| 2 | 0 | `0x83` IN | 26 B | answer input (8-byte Input) |
+
+Confirmed in two independent places: `lsusb -v` on the user's keyboard, and the
+descriptor chain inside the firmware (`0x0000a432`).
+
+### 1.0 Device descriptor  [C]
+
+Do firmware FW 77, em `0x0000a432`:
+
+    12 01 0002 00 00 00 40 DA28 0111 0077 01 02 00 01
+
+| Field | Value |
+|---|---|
+| `bcdUSB` | 2.00 |
+| `bMaxPacketSize0` | 64 |
+| `idVendor` | `0x28DA` |
+| `idProduct` | `0x1101` |
+| **`bcdDevice`** | **`0x0077`** — the firmware version (FW 77) |
+
+`bcdDevice` carries the firmware version, so **`lsusb` reveals the keyboard's
+firmware version with no software at all**.
+
+### 1.0.1 Three config descriptors  [C]
+
+The firmware carries **three copies** of the configuration descriptor
+(`0x0000a444`, `0x0000a498`, `0x0000a4ec`), identical except in the endpoints'
+`bInterval`: **1, 4 and 8**. These are the polling rate options
+(1000 / 250 / 125 Hz) the UI offers.  [I]
 
 ### 1.1 Sending a command  [C]
 
@@ -50,6 +77,10 @@ Control transfer IN (`HidDevice_GetFeature`): `bmRequestType` `0xA1`,
 `bRequest` `0x01` (GET_REPORT), same `wValue`/`wIndex`, 264 bytes.
 
 ### 1.3 ACK  [C]
+
+The channel is confirmed by interface 2's report descriptor (`0x0000a412` in
+FW 77): vendor page `0xFF00`, an **8-byte Input** (Usage `0x30`) and an 8-byte
+Output (Usage `0x31`), with no Report ID. It is EP `0x83`'s 8-byte channel.
 
 8 bytes on endpoint `0x83` IN (interrupt). Valid when:
 
@@ -71,21 +102,48 @@ abandoned repo suggested:
 
 | Offset | Size | Field | Confidence |
 |---|---|---|---|
-| 0 | 1 | `0x07` — magic / report ID | [C] |
+| 0 | 1 | `0x07` — the **HID Report ID** (not a "magic") | [C] |
 | 1 | 1 | command | [C] |
 | 2 | 1 | index — profile? (written as `value + 1`, so 1-based) | [I] |
 | 3 | 1 | `0x00` — always zeroed in the paths seen | [C] |
 | 4 | 1 | **page number** (written as `counter + 1`, 1-based) | [C] |
 | 5 | 1 | a boolean flag, meaning depends on the command | [I] |
 | 6–7 | 2 | they exist but are not written on the paths seen | [?] |
-| 8 | 256 | payload | [I] |
+| 8 | 256 | payload | [C] |
 
 The 8-byte header is inferred from the offsets of the local variables in
 `FUN_100db460`'s decompilation: the buffer starts at `local_20c` (offset 0) and
 the payload array is `local_204` (offset 8), with bytes 6 and 7 declared but not
 assigned on that path.
 
-The `0x07` at offset 0 matches the report ID in `wValue=0x0307`.  [I]
+### 2.0 Why 264 bytes, and why 8 of header  [C]
+
+Confirmed by the **HID report descriptor inside the firmware itself**
+(`0x0000a37a` in FW 77), decoded:
+
+    06 01 ff   Usage Page vendor 0xFF01
+    09 01      Usage 1
+    a1 01      Collection (Application)
+    85 07      Report ID = 7
+    15 00      Logical Minimum 0
+    26 ff 00   Logical Maximum 255
+    09 20      Usage 0x20
+    75 08      Report Size  = 8 bits
+    96 07 01   Report Count = 0x0107 = 263
+    b1 02      FEATURE (Data, Variable, Absolute)
+
+Portanto:
+
+    263 data bytes + 1 Report ID byte = 264 = 0x108    -> matches wLength
+    8 header bytes + 256 payload bytes = 264           -> matches the offsets
+
+**The `0x07` byte at offset 0 is not a "vendor magic character"**, as
+the abandoned repo claims (`KM_START_CHAR`). It is the **HID Report ID**, the same 7
+that makes up `wValue = 0x0307` (`0x03` = report type FEATURE, `0x07` = report ID).
+
+The 256-byte block is not arbitrary: it is what is left of 264 after an 8-byte
+header. That explains `FUN_100db460`'s `memset(buf, 0, 0x300)` — 768 = exactly
+3 pages of 256 bytes.
 
 ### 2.1 Sequence of a transaction  [C]
 
