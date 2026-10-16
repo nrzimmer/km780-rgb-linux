@@ -1,0 +1,6 @@
+# third-party binaries and captures: do not version
+external/gds/*.zip
+external/gds/*.exe
+external/gds/extracted/
+captures/*.pcapng
+venv/
