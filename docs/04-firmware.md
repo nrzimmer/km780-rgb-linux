@@ -33,4 +33,8 @@ the keyboard in a bad state.**
 
 ## Findings
 
-(nothing yet)
+Firmware **located**, in Intel HEX, three versions. MCU identified as
+**NXP LPC11U35** (ARM Cortex-M0). Details in `06-binaries.md`.
+
+The priority stays low: with `Setting.dll` carrying RTTI and class names, the
+host side is a far better target than the MCU firmware.

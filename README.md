@@ -30,8 +30,9 @@ goal of this project.
 | LED payload layout / key→offset map | **unknown** — that is the target |
 | Read-only probing tool | ready — `tools/km780.py` |
 | USB capture of the official software (Windows) | planned — `docs/02-usb-capture.md` |
-| Decompilation of the vendor app | in progress — `docs/03-decompilation.md` |
-| Firmware analysis | not started — `docs/04-firmware.md` |
+| Vendor installers obtained and extracted | **done** — `docs/06-binaries.md` |
+| Decompilation of the vendor app | in progress — `docs/03`, `docs/06` |
+| Firmware + MCU identified | **done** — `docs/04-firmware.md` |
 
 ## Three lines of attack
 
