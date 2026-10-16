@@ -1,9 +1,15 @@
-# third-party binaries and captures: do not version
-external/gds/*.zip
-external/gds/*.exe
-external/gds/extracted/
-captures/*.pcapng
-venv/
+# Third-party binaries: DO NOT version. They are reproducible from the
+# official installers (see docs/06-binaries.md) and weigh ~486 MB.
+external/gds/**
+!external/gds/
+!external/gds/*.txt
+
+# Ghidra project, venv, converted firmware
 ghidra-proj/
+venv/
 firmware/*.bin
+
+# Keyboard state and captures (machine-specific)
 backup-matrix*.json
+snap-*.json
+captures/*.pcapng
