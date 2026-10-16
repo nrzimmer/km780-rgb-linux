@@ -6,3 +6,4 @@ captures/*.pcapng
 venv/
 ghidra-proj/
 firmware/*.bin
+backup-matrix*.json

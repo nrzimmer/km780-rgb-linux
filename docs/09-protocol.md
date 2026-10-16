@@ -104,7 +104,7 @@ abandoned repo suggested:
 |---|---|---|---|
 | 0 | 1 | `0x07` — the **HID Report ID** (not a "magic") | [C] |
 | 1 | 1 | command | [C] |
-| 2 | 1 | index — profile? (written as `value + 1`, so 1-based) | [I] |
+| 2 | 1 | **profile index**, 1-based | [C] |
 | 3 | 1 | depends on the command — in `0x09` it is the **color channel** | [C] |
 | 4 | 1 | depends on the command — page in `0x8B`/`0x92`, `0` in `0x09` | [C] |
 | 5 | 1 | a boolean flag, meaning depends on the command | [I] |
@@ -277,16 +277,45 @@ keys:
 144 bytes = **one byte per LED slot**, which is that channel's intensity
 on that LED. That explains why 144 fits comfortably: `8 + 144 = 152` of 264.
 
-Which channel is R, G and B is still **not determined**. The firmware treats the three
-channels symmetrically (`FUN_000081b8` only clamps to 1..3 and copies 144
-bytes per channel, see `11-firmware.md`), so the mapping is a convention of the
-LED hardware — **probably only a hardware test or a USB capture
-resolve**.  [?]
+**Determined by a hardware test** (2026-10-16), on the user's keyboard:
 
-Independent confirmation from the firmware: each channel is read from a distinct 4 KB bank
-in the external SPI flash (`0x1070`, `0x2070`, `0x3070`).  [C]
+**Determined by a hardware test** (2026-10-16), on the user's keyboard:
 
-### 6.3 There is no commit command  [C]
+| `buf[3]` | Channel |
+|---|---|
+| `1` | **R** (red) |
+| `2` | **G** (green) |
+| `3` | **B** (blue) |
+
+Plain RGB order. The test lit F5 (slot 45) on channel 1 only, F6 (slot 54) on
+channel 2 only and F7 (slot 59) on channel 3 only, with `0xFF`, and the visual result was
+F5 red, F6 green, F7 blue. Reproduce with `tools/km780_led.py test`.
+
+There was no way to find this out from the binary: the firmware treats the three channels
+symmetrically (`FUN_000081b8` only clamps to 1..3 and copies 144 bytes per
+channel), and each one is read from a distinct 4 KB bank in the external SPI flash
+(`0x1070`, `0x2070`, `0x3070`) — see `11-firmware.md`. The mapping is
+a convention of the LED hardware.
+
+### The `0x09` is authoritative for static color  [C]
+
+In the same test, **every other key went dark**, because the remaining slots
+were sent as zero. There is no effect layer nor brightness layer on top of
+what the `0x09` writes — if there were, the other keys would have stayed lit.
+
+### 6.3 Write and read are symmetric  [C]
+
+Verified on hardware: after writing with `0x09`, reading with `0x89` on the same
+channel returns exactly the bytes sent. The device **echoes the header**
+in the reply:
+
+That confirmed on hardware two things that had been inferences: `buf[2]` is the
+1-based profile index, and `buf[3]` is the channel.
+
+That confirmed on hardware two things that used to be inference: `buf[2]` is the
+1-based profile index, and `buf[3]` is the channel.
+
+The third packet closes the update. The observed timing:
 
 The third packet closes the update. The timing observed:
 
@@ -300,7 +329,7 @@ The third packet closes the update. The timing observed:
 That is: 20 ms after each channel, plus 100 ms after the third. No separate
 apply command.
 
-### 6.4 Key → slot map  [C]
+### 6.5 Key → slot map  [C]
 
 **Extracted.** Table at `0x1023b3b0` in `.data`, 132 slots, every key
 identified. It has its own document: **`10-key-map.md`**.
@@ -311,7 +340,7 @@ Formato: linhas de 8 bytes, `dword0` = virtual-key code do Windows (ou ID
 **The row's position is the slot index.** The order is not the keyboard's
 physical one — it is the hardware's LED scan order.
 
-### 6.5 Open
+### 6.6 Open
 
 - which channel (`buf[3]` = 1/2/3) corresponds to R, G and B  **[?]**
 - what the remaining 12 slots are (144 − 132)  **[?]**
@@ -355,8 +384,8 @@ via `HidDevice_GetDevVersion`.
 | 2 | paging | **solved** — it is 1 packet per channel, section 6.2 |
 | 3 | commit/apply command | **solved** — there is none, section 6.3 |
 | 4 | key → slot map | **solved** — `10-key-map.md` |
-| 5 | which channel is R, G, B | open — requires hardware or a capture |
-| 6 | how intensity/brightness is controlled | open |
+| 5 | which channel is R, G, B | **solved** — 1=R, 2=G, 3=B, tested on hardware |
+| 6 | how intensity/brightness is controlled | **the only open item in Phase 1** |
 
 ### Phase 2 — these complete the specification
 

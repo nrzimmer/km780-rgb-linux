@@ -24,16 +24,17 @@ goal of this project.
 
 ## Status
 
-| Area | State |
+| Area | Status |
 |---|---|
 | USB transport (framing, endpoints, commands) | **known** — see `docs/01-transport.md` |
 | LED payload layout | **known** — `docs/09-protocol.md` §6 |
 | key→LED slot map (132 slots) | **extracted** — `docs/10-key-map.md` |
 | Byte-by-byte protocol specification | in progress — `docs/09-protocol.md` |
+| **Color protocol validated on hardware** | **done** — write and read confirmed |
 | Read-only probing tool | ready — `tools/km780.py` |
 | USB capture of the official software (Windows) | planned — `docs/02-usb-capture.md` |
-| Vendor installers obtained and extracted | **done** — `docs/06-binaries.md` |
-| Decompilation of the vendor app | in progress — `docs/03`, `docs/06` |
+| Official installers obtained and extracted | **done** — `docs/06-binaries.md` |
+| Decompilation of the official app | in progress — `docs/03`, `docs/06` |
 | Firmware + MCU identified | **done** — `docs/04-firmware.md` |
 | RE tooling (Ghidra 12.1.4 + REA) | **done** — `docs/07-tooling.md` |
 | Analysis of `Setting.dll` in Ghidra | in progress |
