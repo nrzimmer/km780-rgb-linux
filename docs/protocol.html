@@ -1,0 +1,893 @@
+<title>KM780 RGB Protocol</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: a single reading column (68ch) with byte strips bleeding out to 980px.
+   A hardware-datasheet voice: the mono is the title face, not just the data's. */
+:root{
+  --bg:#f2f3f5; --paper:#fbfbfc; --fg:#1b1f26; --dim:#5c6472; --rule:#d2d6dd;
+  --accent:#b2541f; --accent-soft:#f0e2d8;
+  --f-id:#7a8290; --f-cmd:#b2541f; --f-idx:#6b4fa8; --f-page:#1b7a7a;
+  --f-data:#2d5ca8; --f-zero:#a8aeb9; --f-unk:#8a8f99;
+  --ok:#1f7a4d; --warn:#9a6a10; --crit:#b3261e;
+  --mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#13161b; --paper:#1a1e25; --fg:#e4e7ec; --dim:#98a1b0; --rule:#2d333d;
+  --accent:#e08a4e; --accent-soft:#2e2018;
+  --f-id:#8b94a3; --f-cmd:#e08a4e; --f-idx:#a98ee0; --f-page:#44c0bc;
+  --f-data:#6b9ee8; --f-zero:#565d6a; --f-unk:#767d89;
+  --ok:#4cc08a; --warn:#d7a64a; --crit:#e8766c; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#13161b; --paper:#1a1e25; --fg:#e4e7ec; --dim:#98a1b0; --rule:#2d333d;
+  --accent:#e08a4e; --accent-soft:#2e2018;
+  --f-id:#8b94a3; --f-cmd:#e08a4e; --f-idx:#a98ee0; --f-page:#44c0bc;
+  --f-data:#6b9ee8; --f-zero:#565d6a; --f-unk:#767d89;
+  --ok:#4cc08a; --warn:#d7a64a; --crit:#e8766c; color-scheme:dark}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:15px;line-height:1.6;
+  -webkit-text-size-adjust:100%}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);
+  z-index:10;background:var(--bg)}
+.wrap{max-width:980px;margin:0 auto;
+  padding-left:max(16px,env(safe-area-inset-left,0px));
+  padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-block:0 4rem}
+.col{max-width:68ch}
+h1,h2,h3{font-family:var(--mono);font-weight:600;text-wrap:balance;letter-spacing:-.02em;margin:0}
+h1{font-size:clamp(1.6rem,5vw,2.4rem);line-height:1.15}
+h2{font-size:1.3rem;margin-block:3.5rem .4rem;padding-top:1.1rem;border-top:2px solid var(--fg)}
+h3{font-size:1rem;margin-block:2rem .3rem}
+p{margin:.7rem 0}
+a{color:var(--accent)}
+code,.hex{font-family:var(--mono);font-size:.87em;font-variant-numeric:tabular-nums}
+code{background:var(--accent-soft);padding:.1em .3em;border-radius:2px}
+.lede{font-size:1.05rem;color:var(--dim);max-width:60ch}
+.eyebrow{font-family:var(--mono);font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+
+/* --- page header --- */
+header.top{padding-block:2.5rem 0}
+.meta{display:flex;flex-wrap:wrap;gap:.4rem 1.4rem;margin-top:1.2rem;
+  font-family:var(--mono);font-size:.78rem;color:var(--dim)}
+.meta b{color:var(--fg);font-weight:500}
+
+/* --- navigation --- */
+nav{position:sticky;top:env(safe-area-inset-top,0px);z-index:9;background:var(--bg);
+  border-bottom:1px solid var(--rule);margin-top:2rem}
+nav ul{display:flex;gap:.1rem;overflow-x:auto;list-style:none;margin:0;padding:0;scrollbar-width:thin}
+nav a{display:block;white-space:nowrap;padding:.6rem .7rem;font-family:var(--mono);font-size:.78rem;
+  color:var(--dim);text-decoration:none;border-bottom:2px solid transparent}
+nav a:hover,nav a:focus-visible{color:var(--fg);border-bottom-color:var(--accent)}
+
+/* --- confidence legend --- */
+.conf{display:inline-block;font-family:var(--mono);font-size:.7rem;font-weight:600;
+  padding:.05em .35em;border-radius:2px;vertical-align:.1em;white-space:nowrap}
+.c-c{background:var(--ok);color:var(--paper)}
+.c-i{background:transparent;color:var(--warn);border:1px dashed var(--warn)}
+.c-q{background:transparent;color:var(--f-unk);border:1px solid var(--f-unk)}
+
+/* --- byte strip --- */
+.scroll{overflow-x:auto;margin-block:1.2rem;padding-bottom:.3rem}
+.ruler{display:flex;min-width:620px;border:1px solid var(--rule);border-radius:3px;overflow:hidden}
+.fld{position:relative;min-width:0;padding:.5rem .5rem .45rem;border-right:1px solid var(--rule);
+  background:var(--paper);display:flex;flex-direction:column;gap:.15rem}
+.fld:last-child{border-right:0}
+.fld::before{content:"";position:absolute;inset:0 0 auto;height:4px;background:var(--c,var(--f-unk))}
+.fld.unk{background:repeating-linear-gradient(135deg,transparent 0 5px,var(--rule) 5px 6px)}
+.fld.dash{border-right-style:dashed}
+.fld .off{font-family:var(--mono);font-size:.68rem;color:var(--dim);font-variant-numeric:tabular-nums}
+.fld .nm{font-size:.76rem;line-height:1.3;font-weight:500;overflow-wrap:anywhere}
+.fld .vl{font-family:var(--mono);font-size:.72rem;color:var(--c,var(--dim))}
+
+/* --- grid of individual bytes --- */
+.bytes{display:flex;min-width:0;gap:3px;flex-wrap:wrap}
+.by{flex:0 0 auto;width:4.1rem;border:1px solid var(--rule);border-top:4px solid var(--c,var(--f-unk));
+  border-radius:3px;background:var(--paper);padding:.35rem .3rem;text-align:center}
+.by.unk{background:repeating-linear-gradient(135deg,transparent 0 5px,var(--rule) 5px 6px)}
+.by .n{font-family:var(--mono);font-size:.66rem;color:var(--dim)}
+.by .v{font-family:var(--mono);font-size:.84rem;font-weight:600;color:var(--c,var(--fg))}
+.by .l{font-size:.6rem;line-height:1.25;color:var(--dim);margin-top:.15rem}
+
+/* --- tables --- */
+.tscroll{overflow-x:auto;margin-block:1.1rem}
+table{border-collapse:collapse;font-size:.85rem;min-width:100%}
+th,td{text-align:left;padding:.4rem .7rem .4rem 0;border-bottom:1px solid var(--rule);vertical-align:top}
+th{font-family:var(--mono);font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--dim);font-weight:500;white-space:nowrap}
+td.m,th.m{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+
+/* --- note / warning --- */
+.note{background:var(--paper);border-left:3px solid var(--accent);padding:.8rem 1rem;margin-block:1.3rem;
+  font-size:.9rem}
+.note.danger{border-left-color:var(--crit)}
+.note .hd{font-family:var(--mono);font-size:.74rem;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--accent);margin-bottom:.25rem}
+.note.danger .hd{color:var(--crit)}
+.note p:first-of-type{margin-top:0}
+.note p:last-child{margin-bottom:0}
+
+/* --- numbered sequence --- */
+ol.seq{list-style:none;counter-reset:s;margin:1.2rem 0;padding:0;display:grid;gap:.45rem}
+ol.seq li{counter-increment:s;display:grid;grid-template-columns:2.1rem 1fr;gap:.7rem;align-items:baseline}
+ol.seq li::before{content:counter(s,decimal-leading-zero);font-family:var(--mono);font-size:.74rem;
+  color:var(--dim);border-right:1px solid var(--rule);padding-right:.5rem;text-align:right}
+ol.seq .w{font-family:var(--mono);font-size:.82rem}
+ol.seq .d{font-size:.84rem;color:var(--dim)}
+
+/* --- command matrix --- */
+.cmdgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(3.4rem,1fr));gap:3px;margin-block:1.2rem}
+.cm{border:1px solid var(--rule);border-radius:3px;padding:.3rem .2rem;text-align:center;
+  font-family:var(--mono);background:var(--paper)}
+.cm .h{font-size:.8rem;font-weight:600}
+.cm .t{font-size:.58rem;color:var(--dim);line-height:1.2;display:block;min-height:1.2em}
+.cm.w{border-color:var(--f-cmd);box-shadow:inset 0 -3px 0 var(--f-cmd)}
+.cm.r{border-color:var(--f-page);box-shadow:inset 0 -3px 0 var(--f-page)}
+.cm.ev{border-color:var(--f-idx);box-shadow:inset 0 -3px 0 var(--f-idx)}
+.cm.no{color:var(--f-zero);border-style:dashed}
+
+/* --- function code space --- */
+.codebar{display:flex;min-width:560px;height:3.1rem;border:1px solid var(--rule);border-radius:3px;
+  overflow:hidden;font-family:var(--mono)}
+.codebar div{min-width:0;display:flex;flex-direction:column;justify-content:center;
+  padding:.2rem .35rem;border-right:1px solid var(--rule);background:var(--paper)}
+.codebar div:last-child{border-right:0}
+.codebar .r{font-size:.66rem;color:var(--dim)}
+.codebar .k{font-size:.72rem;font-weight:600;color:var(--c,var(--fg));overflow-wrap:anywhere}
+.codebar .gap{background:repeating-linear-gradient(135deg,transparent 0 5px,var(--rule) 5px 6px)}
+
+/* --- keyboard --- */
+.kb{margin-block:1.2rem}
+.kbrow{display:flex;gap:3px;margin-bottom:3px}
+.kbrow .sp{flex:0 0 auto}
+.k{--w:1;flex:0 0 auto;width:calc(var(--w)*var(--ku) + (var(--w) - 1)*3px);height:var(--ku);
+  border:1px solid var(--rule);border-radius:3px;background:var(--paper);color:var(--fg);
+  font-family:var(--mono);font-size:.56rem;line-height:1.1;cursor:pointer;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;
+  padding:1px;overflow:hidden;text-align:center}
+.k .s{font-size:.7rem;font-weight:600;font-variant-numeric:tabular-nums}
+.k .t{color:var(--dim);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.k:hover,.k:focus-visible{border-color:var(--accent);outline:none}
+.k[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+.k[aria-pressed="true"] .t{color:#fff}
+.readout{font-family:var(--mono);font-size:.8rem;background:var(--paper);border:1px solid var(--rule);
+  border-radius:3px;padding:.6rem .8rem;margin-top:.8rem;min-height:3.4rem}
+.readout .big{font-size:1rem;font-weight:600}
+.readout dl{display:flex;flex-wrap:wrap;gap:.1rem 1.3rem;margin:.3rem 0 0}
+.readout dt{color:var(--dim);font-size:.7rem;text-transform:uppercase;letter-spacing:.06em}
+.readout dd{margin:0 0 0 .4rem}
+.readout div.pair{display:flex;align-items:baseline}
+.orphans{display:flex;flex-wrap:wrap;gap:3px;margin-top:.5rem}
+
+/* --- gradient chart --- */
+.chart{margin-block:1.2rem;background:var(--paper);border:1px solid var(--rule);border-radius:3px;
+  padding:.9rem .7rem .5rem}
+.chart svg{display:block;width:100%;height:auto;max-width:100%}
+
+/* --- bits --- */
+.bits{display:flex;min-width:360px;border:1px solid var(--rule);border-radius:3px;overflow:hidden;
+  font-family:var(--mono);text-align:center}
+.bits div{flex:1 1 0;min-width:0;padding:.4rem .1rem;border-right:1px solid var(--rule);background:var(--paper)}
+.bits div:last-child{border-right:0}
+.bits .bn{font-size:.62rem;color:var(--dim)}
+.bits .bv{font-size:.74rem;font-weight:600}
+.bits .m7{background:var(--accent-soft)}
+
+.legend{display:flex;flex-wrap:wrap;gap:.3rem .9rem;margin-block:.8rem;font-family:var(--mono);font-size:.72rem}
+.legend span{display:flex;align-items:center;gap:.3rem;color:var(--dim)}
+.legend i{width:.8rem;height:.8rem;border-radius:2px;background:var(--c);flex:0 0 auto}
+.legend i.hatch{background:repeating-linear-gradient(135deg,transparent 0 4px,var(--f-unk) 4px 5px);
+  border:1px solid var(--rule)}
+
+footer{margin-top:4rem;padding-top:1.2rem;border-top:1px solid var(--rule);
+  font-family:var(--mono);font-size:.74rem;color:var(--dim)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<div class="wrap">
+<header class="top">
+  <div class="col">
+    <div class="eyebrow">G.SKILL Ripjaws · USB 28da:1101 · FW 77</div>
+    <h1>Protocolo KM780 RGB</h1>
+    <p class="lede">The keyboard's lighting and configuration protocol, field
+    by field, as reconstructed from 11 USB captures of the official software,
+    from decompiling <code>Setting.dll</code> and from the firmware.</p>
+    <div class="meta">
+      <span><b>264</b> bytes per packet</span>
+      <span><b>18</b> commands on the wire</span>
+      <span><b>144</b> LED slots, 132 used</span>
+      <span><b>3</b> modes</span>
+    </div>
+    <div class="legend" style="margin-top:1.1rem">
+      <span><span class="conf c-c">C</span> confirmed on hardware or in the binary</span>
+      <span><span class="conf c-i">I</span> inferred</span>
+      <span><span class="conf c-q">?</span> unknown</span>
+    </div>
+  </div>
+</header>
+
+<nav aria-label="Sections">
+  <ul>
+    <li><a href="#envelope">Envelope</a></li>
+    <li><a href="#transport">Transport</a></li>
+    <li><a href="#commands">Commands</a></li>
+    <li><a href="#color">Cor 0x09</a></li>
+    <li><a href="#slot-map">Slot map</a></li>
+    <li><a href="#mode">Mode 0x02</a></li>
+    <li><a href="#key-functions">Key functions</a></li>
+    <li><a href="#effects">Effects</a></li>
+    <li><a href="#macro">Macro 0x05</a></li>
+    <li><a href="#init">Init</a></li>
+    <li><a href="#gaps">Gaps</a></li>
+  </ul>
+</nav>
+
+<!-- ===================== ENVELOPE ===================== -->
+<h2 id="envelope">The 264-byte envelope</h2>
+<div class="col">
+<p>Every packet, in both directions, is 264 bytes: <b>8 of header and 256 of
+payload</b>. It is not an arbitrary choice — it is what the report descriptor
+the firmware declares, at <code>0x0000a37a</code>: 263 data bytes plus 1 of
+Report ID. <span class="conf c-c">C</span></p>
+</div>
+
+<div class="scroll">
+<div class="bytes" style="min-width:600px">
+  <div class="by" style="--c:var(--f-id)"><div class="n">0</div><div class="v">07</div><div class="l">HID Report ID</div></div>
+  <div class="by" style="--c:var(--f-cmd)"><div class="n">1</div><div class="v">cmd</div><div class="l">command</div></div>
+  <div class="by" style="--c:var(--f-idx)"><div class="n">2</div><div class="v">idx</div><div class="l">mode / page, 1-based</div></div>
+  <div class="by" style="--c:var(--f-page)"><div class="n">3</div><div class="v">arg</div><div class="l">channel in 0x09; subpage</div></div>
+  <div class="by" style="--c:var(--f-page)"><div class="n">4</div><div class="v">arg</div><div class="l">page in 0x8B / 0x92</div></div>
+  <div class="by unk" style="--c:var(--f-unk)"><div class="n">5</div><div class="v">00</div><div class="l">flag, never varied</div></div>
+  <div class="by unk" style="--c:var(--f-unk)"><div class="n">6–7</div><div class="v">00</div><div class="l">not written</div></div>
+  <div class="by" style="--c:var(--f-data);width:12rem"><div class="n">8 … 263</div><div class="v">payload</div><div class="l">256 bytes</div></div>
+</div>
+</div>
+
+<div class="legend">
+  <span><i style="--c:var(--f-id)"></i>structural</span>
+  <span><i style="--c:var(--f-cmd)"></i>command</span>
+  <span><i style="--c:var(--f-idx)"></i>index</span>
+  <span><i style="--c:var(--f-page)"></i>page / channel</span>
+  <span><i style="--c:var(--f-data)"></i>payload</span>
+  <span><i class="hatch"></i>unknown</span>
+</div>
+
+<div class="note">
+  <div class="hd">The byte 0x07 is not a magic number</div>
+  <p>The abandoned repo <code>legonigel/KM780-RGB-Linux-Driver</code> calls
+  byte 0 <code>KM_START_CHAR</code>, a "manufacturer magic character".
+  It is the <b>HID Report ID</b> — the same 7 that makes up
+  <code>wValue = 0x0307</code>, where <code>0x03</code> is the report type
+  FEATURE and <code>0x07</code> the report ID. Anyone implementing the
+  transport that way is right by accident and wrong the moment they generalize.</p>
+</div>
+
+<h3>The transaction, the way the manufacturer does it</h3>
+<div class="col">
+<p>Taken from <code>FUN_100d8fc0</code>. The official software <b>does not read
+the ACK</b> on the interrupt endpoint <code>0x83</code>: it writes, sleeps, and
+reads back into the same buffer. <span class="conf c-c">C</span></p>
+</div>
+<ol class="seq">
+  <li><span class="w">memset(buf, 0, 0x200); buf[0]=0x07; buf[1]=cmd</span></li>
+  <li><span class="w">HidDevice_SetFeature(h, buf, 0x108, 0)</span> <span class="d">ordinal 7</span></li>
+  <li><span class="w">Sleep(10)</span> <span class="d">50 ms on the paged commands</span></li>
+  <li><span class="w">HidDevice_GetFeature(h, buf, 0x108, 0)</span> <span class="d">ordinal 8</span></li>
+  <li><span class="w">Sleep(10)</span> <span class="d">100 ms on the paged commands</span></li>
+</ol>
+<div class="col">
+<p>The abandoned repo's ACK wait works, but it loops forever if the ACK never
+arrives — and it is not what the manufacturer does.</p>
+</div>
+
+<!-- ===================== TRANSPORT ===================== -->
+<h2 id="transport">Transport</h2>
+<div class="col">
+<p>Three HID interfaces, confirmed in two independent places:
+<code>lsusb -v</code> on the keyboard and the descriptor chain inside the firmware
+(<code>0x0000a432</code>). <span class="conf c-c">C</span></p>
+</div>
+
+<div class="tscroll">
+<table>
+<thead><tr><th class="m">If</th><th>Protocol</th><th class="m">EP</th><th class="m">Report</th><th>Role</th></tr></thead>
+<tbody>
+<tr><td class="m">0</td><td>1 · Keyboard</td><td class="m">0x81 IN</td><td class="m">65 B</td><td>HID keyboard — do not touch</td></tr>
+<tr><td class="m">1</td><td>2 · Mouse</td><td class="m">0x82 IN</td><td class="m">252 B</td><td><b>command output</b> (Feature report ID 7)</td></tr>
+<tr><td class="m">2</td><td>0</td><td class="m">0x83 IN</td><td class="m">26 B</td><td>event input (8-byte Input)</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="tscroll">
+<table>
+<thead><tr><th>Direction</th><th class="m">bmRequestType</th><th class="m">bRequest</th><th class="m">wValue</th><th class="m">wIndex</th><th class="m">wLength</th></tr></thead>
+<tbody>
+<tr><td>write · SET_REPORT</td><td class="m">0x21</td><td class="m">0x09</td><td class="m">0x0307</td><td class="m">0x0001</td><td class="m">0x0108</td></tr>
+<tr><td>read · GET_REPORT</td><td class="m">0xA1</td><td class="m">0x01</td><td class="m">0x0307</td><td class="m">0x0001</td><td class="m">0x0108</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3><code>bcdDevice</code> carries the firmware version</h3>
+<div class="col">
+<p>In the device descriptor, <code>bcdDevice = 0x0077</code> is FW 77.
+A practical consequence: <b><code>lsusb</code> reveals the keyboard's firmware
+version with no software at all.</b> The firmware also carries <b>three
+copies</b> of the configuration descriptor, identical except in the endpoints'
+<code>bInterval</code> — 1, 4 and 8 — which are the UI's polling rate options.</p>
+</div>
+
+<h3>The event channel, <code>0x83</code></h3>
+<div class="col">
+<p>8 bytes, vendor page <code>0xFF00</code>. This is where the keyboard speaks
+on its own: the MR/M1/M2/M3 keys switch the mode and record macros <b>with no
+software</b>, so the active mode changes underneath the host.</p>
+</div>
+<div class="tscroll">
+<table>
+<thead><tr><th class="m">Evento</th><th>Significado</th><th>Conf.</th></tr></thead>
+<tbody>
+<tr><td class="m">00 00 &lt;cmd&gt; …</td><td>ACK: echo of the command sent, bytes 3–7 unknown</td><td><span class="conf c-i">I</span></td></tr>
+<tr><td class="m">f6 01 XX YY</td><td><b>key pressed</b>: XX = column, YY = row of the physical matrix</td><td><span class="conf c-c">C</span></td></tr>
+<tr><td class="m">02 04 XX 08 01</td><td>third byte = mode; the rest unknown</td><td><span class="conf c-q">?</span></td></tr>
+<tr><td class="m">0B …</td><td>brightness changed from the keyboard's own keys (device→host)</td><td><span class="conf c-c">C</span></td></tr>
+</tbody>
+</table>
+</div>
+
+<!-- ===================== COMMANDS ===================== -->
+<h2 id="commands">Command space</h2>
+<div class="col">
+<p>Bit 7 set = read. <b>Confirmed empirically</b> on six pairs
+(<code>0x01/0x81</code>, <code>0x02/0x82</code>, <code>0x05/0x85</code>,
+<code>0x09/0x89</code>, <code>0x0A/0x8A</code>, <code>0x12/0x92</code>), no
+longer inferred. <span class="conf c-c">C</span></p>
+</div>
+
+<div class="legend">
+  <span><i style="--c:var(--f-cmd)"></i>write observed</span>
+  <span><i style="--c:var(--f-page)"></i>read observed</span>
+  <span><i style="--c:var(--f-idx)"></i>event device→host</span>
+  <span><i class="hatch"></i>never seen on the wire</span>
+</div>
+<div class="cmdgrid" id="cmdgrid"></div>
+
+<div class="note danger">
+  <div class="hd">Do not sweep unknown commands</div>
+  <p>That is exactly what put the keyboard into bootloader mode: <b>some byte
+  between <code>0x96</code> and <code>0xAF</code> is not a read, despite having
+  bit 7 set.</b> The "bit 7 means read" convention holds for the confirmed commands,
+  not for arbitrary bytes. Recovery exists (<code>FWUpdate.exe</code> +
+  the <code>.hex</code>), but it depends on a Windows machine.</p>
+</div>
+
+<div class="col">
+<p>The list is a <b>floor, not the complete set</b>. The scan of
+<code>Setting.dll</code> found 19 sites with an immediate command byte, but the
+binary has <b>37</b> <code>push 0x108</code>. The difference is sites that
+load the command from a register, out of the scan's reach — and that is what
+explains why <code>0x08</code>, which the abandoned repo calls the "LED Effect
+Database", does not appear in it. <span class="conf c-q">?</span></p>
+</div>
+
+<h3>Timing</h3>
+<div class="tscroll">
+<table>
+<thead><tr><th>Command</th><th class="m">After sending</th><th class="m">After reading</th></tr></thead>
+<tbody>
+<tr><td>simple transaction (<code>0x81</code>)</td><td class="m">10 ms</td><td class="m">10 ms</td></tr>
+<tr><td>paged (<code>0x8B</code>, <code>0x92</code>)</td><td class="m">50 ms</td><td class="m">100 ms</td></tr>
+<tr><td><code>0x09</code>, per channel</td><td class="m">20 ms</td><td class="m">+100 ms after the 3rd</td></tr>
+</tbody>
+</table>
+<p style="font-size:.84rem;color:var(--dim);max-width:60ch">The long waits
+on the paged ones probably exist because the firmware writes the external SPI
+flash between pages.</p>
+</div>
+
+<!-- ===================== COLOR ===================== -->
+<h2 id="color">0x09 · LED Matrix Database</h2>
+<div class="col">
+<p>The color path. <b>A complete update is three packets, one per channel</b> —
+it is not key paging. Each packet carries 144 bytes, one per LED slot, with
+that channel's intensity on that LED.</p>
+</div>
+
+<div class="scroll">
+<div class="ruler">
+  <div class="fld" style="--c:var(--f-id);flex:1 1 8px"><span class="off">0</span><span class="nm">Report ID</span><span class="vl">07</span></div>
+  <div class="fld" style="--c:var(--f-cmd);flex:1 1 8px"><span class="off">1</span><span class="nm">command</span><span class="vl">09 / 89</span></div>
+  <div class="fld" style="--c:var(--f-idx);flex:1 1 8px"><span class="off">2</span><span class="nm">mode</span><span class="vl">1–3</span></div>
+  <div class="fld" style="--c:var(--f-page);flex:1 1 8px"><span class="off">3</span><span class="nm">channel</span><span class="vl">1=R 2=G 3=B</span></div>
+  <div class="fld unk" style="--c:var(--f-unk);flex:1 1 8px"><span class="off">4–7</span><span class="nm">zero</span><span class="vl">00</span></div>
+  <div class="fld" style="--c:var(--f-data);flex:18 1 140px"><span class="off">8–151</span><span class="nm">144 LED slots, 1 byte each</span><span class="vl">intensity 0–255</span></div>
+  <div class="fld" style="--c:var(--f-zero);flex:14 1 90px"><span class="off">152–263</span><span class="nm">unused</span><span class="vl">00</span></div>
+</div>
+</div>
+
+<h3>Which channel is R, G and B</h3>
+<div class="col">
+<p>It could not be found out from the binary: the firmware treats the three
+channels symmetrically — <code>FUN_000081b8</code> only clamps to 1..3 and
+copies 144 bytes — and each one comes from a distinct 4 KB bank in the external SPI flash
+(<code>0x1070</code>, <code>0x2070</code>, <code>0x3070</code>). A
+correspondence is a convention of the LED hardware, and it came out of a
+<b>hardware test</b>: F5 (slot 45) on channel 1 only, F6 (slot 54) on channel 2
+only, F7 (slot 59) on channel 3 only, all with <code>0xFF</code>.
+<span class="conf c-c">C</span></p>
+</div>
+
+<div class="scroll">
+<div class="ruler" style="min-width:300px">
+  <div class="fld" style="--c:#c0392b;flex:1"><span class="off">buf[3] = 1</span><span class="nm">R · red</span><span class="vl">F5 lit up red</span></div>
+  <div class="fld" style="--c:#1f8b4c;flex:1"><span class="off">buf[3] = 2</span><span class="nm">G · green</span><span class="vl">F6 lit up green</span></div>
+  <div class="fld" style="--c:#2d5ca8;flex:1"><span class="off">buf[3] = 3</span><span class="nm">B · blue</span><span class="vl">F7 lit up blue</span></div>
+</div>
+</div>
+
+<h3>Three things the same test settled</h3>
+<div class="col">
+<p><b>There is no commit.</b> The third packet closes the update; no separate
+apply command. <b><code>0x09</code> is authoritative for static color</b> —
+in the test every other key went dark, because they were sent as zero; if there
+were an effect or brightness layer on top, they would have stayed lit. And
+<b>the read is symmetric</b>: <code>0x89</code> returns the bytes sent and
+<b>echoes the header</b>, which confirmed that <code>buf[2]</code> is the mode
+and <code>buf[3]</code> the channel.</p>
+</div>
+
+<h3>The intensity is not here</h3>
+<div class="col">
+<p>It is <b>byte 11 of the mode payload</b> (<code>0x02</code>), with values
+0 to 4 — the UI's five levels. Walking through all the levels, the only byte
+that varies across the 12 <code>0x02</code> packets is 11, in the sequence
+<code>00 00 01 02 03 04</code>, and the <code>0x09</code> packets sent
+alongside keep the color intact. That is: <b>the firmware applies the brightness; the
+host does not pre-multiply the color.</b> <span class="conf c-c">C</span></p>
+</div>
+
+<!-- ===================== KEYBOARD ===================== -->
+<h2 id="slot-map">Key → LED slot map</h2>
+<div class="col">
+<p>There are 132 slots used out of 144. The order is <b>not the keyboard's
+physical one</b> — it is the hardware's LED scan order, which is obvious here:
+neighbouring slots land in opposite corners of the keyboard. Click a key to see the slot,
+o HID usage e o virtual-key code.</p>
+</div>
+
+<div class="kb" id="kb" style="--ku:2.35rem"></div>
+<div class="readout" id="readout" aria-live="polite"></div>
+
+<h3>In the matrix, but not on the keyboard</h3>
+<div class="col">
+<p>Ten slots within the 132 have no physical key in the US/ABNT layout — they are
+positions from JIS/ABNT layouts and zones the matrix addresses but the board does not
+expose. The remaining 12 slots (144 − 132) are addressed by no table at
+all: they are always zeroed, so they simply do not exist.</p>
+</div>
+<div class="orphans" id="orphans"></div>
+
+<!-- ===================== MODE ===================== -->
+<h2 id="mode">0x02 · Mode Information</h2>
+<div class="col">
+<p>The name in the binary is "Profile Information", but what it carries is a
+<b>mode</b> (M1/M2/M3). The UI's "Profile" is a PC-side concept and <b>does not
+exist in the protocol</b>. There are 3 modes.</p>
+</div>
+
+<div class="scroll">
+<div class="ruler" style="min-width:860px">
+  <div class="fld" style="--c:var(--f-id);flex:1 1 7px"><span class="off">0</span><span class="nm">07</span></div>
+  <div class="fld" style="--c:var(--f-cmd);flex:1 1 7px"><span class="off">1</span><span class="nm">02 / 82</span></div>
+  <div class="fld" style="--c:var(--f-idx);flex:1 1 7px"><span class="off">2</span><span class="nm">mode</span><span class="vl">1–3</span></div>
+  <div class="fld" style="--c:var(--f-page);flex:1 1 7px"><span class="off">3</span><span class="nm">status</span><span class="vl">00 set · 03 get</span></div>
+  <div class="fld unk" style="--c:var(--f-unk);flex:1 1 7px"><span class="off">4–7</span><span class="nm">zero</span></div>
+  <div class="fld" style="--c:var(--f-data);flex:1 1 7px"><span class="off">8</span><span class="nm">polling</span><span class="vl">ms</span></div>
+  <div class="fld unk" style="--c:var(--f-unk);flex:1 1 7px"><span class="off">9</span><span class="nm">?</span></div>
+  <div class="fld" style="--c:var(--f-data);flex:1 1 7px"><span class="off">10</span><span class="nm">effect</span><span class="vl">ID</span></div>
+  <div class="fld" style="--c:var(--f-data);flex:1 1 7px"><span class="off">11</span><span class="nm">brightness</span><span class="vl">0–4</span></div>
+  <div class="fld" style="--c:var(--f-data);flex:3 1 18px"><span class="off">12–14</span><span class="nm">direction</span></div>
+  <div class="fld dash" style="--c:var(--f-data);flex:12 1 70px"><span class="off">15–71</span><span class="nm">4 B records · duration</span><span class="vl">inferred</span></div>
+  <div class="fld unk" style="--c:var(--f-unk);flex:8 1 60px"><span class="off">72–107</span><span class="nm">config · 75–77 = nº de paradas</span></div>
+  <div class="fld dash" style="--c:var(--f-data);flex:3 1 22px"><span class="off">108–119</span><span class="nm">toggles and 3 RGB triples</span></div>
+  <div class="fld" style="--c:var(--f-data);flex:30 1 150px"><span class="off">120–263</span><span class="nm">key assignment table · 144 slots, 1 byte each</span></div>
+</div>
+</div>
+
+<div class="note">
+  <div class="hd">The safe operating model</div>
+  <p><code>0x82</code> returns <b>byte for byte</b> what <code>0x02</code>
+  wrote — across the 264 bytes the only field that differs is byte 3. Hence the
+  procedure for the Linux tooling:</p>
+  <p style="font-family:var(--mono);font-size:.85rem"><b>read the mode with
+  <code>0x82</code> → change the desired byte → write it back with
+  <code>0x02</code></b></p>
+  <p>There is no need to understand the fields still marked
+  <span class="conf c-q">?</span> in order to touch the ones marked
+  <span class="conf c-c">C</span>: the unknown ones travel intact through the
+  round-trip. And, since the M1/M2/M3 keys switch the mode with no software,
+  re-read the active mode with <code>0x81</code> instead of assuming the last value written.</p>
+</div>
+
+<h3>Polling rate · byte 8</h3>
+<div class="tscroll">
+<table>
+<thead><tr><th class="m">byte 8</th><th class="m">1</th><th class="m">2</th><th class="m">4</th><th class="m">8</th></tr></thead>
+<tbody><tr><td><b>taxa</b></td><td class="m">1000 Hz</td><td class="m">500 Hz</td><td class="m">250 Hz</td><td class="m">125 Hz</td></tr></tbody>
+</table>
+<p style="font-size:.84rem;color:var(--dim);max-width:60ch">It is the
+<code>bInterval</code> in ms, the same value that tells apart the three copies of the
+configuration descriptor no firmware.</p>
+</div>
+
+<!-- ===================== KEY FUNCTIONS ===================== -->
+<h2 id="key-functions">Key functions · bytes 120–263</h2>
+<div class="col">
+<p>One byte per slot, in the same order as the LED map — which confirms the map
+on hardware. The value is <b>not fixed</b>: it is the code of the function
+assigned to the key. From the factory each entry coincides with the key's own
+HID usage because nothing had been remapped. Assigning Ctrl to G6 changed byte
+125 from <code>00</code> to <code>e0</code>; assigning a macro to G1 changed byte 120 to
+<code>b4</code>.</p>
+<p>The nine types the KEY ASSIGNMENT dialog offers all write into the
+<b>same byte</b>. It works because the high ranges do not collide with the HID
+usages the keyboard uses (<code>0x04</code>–<code>0x65</code>,
+<code>0xE0</code>–<code>0xE7</code>), so <b>one byte is enough</b> to address
+any function.</p>
+</div>
+
+<div class="scroll">
+<div class="codebar">
+  <div style="--c:var(--f-zero);flex:1 1 40px"><span class="r">00</span><span class="k">no function</span></div>
+  <div style="--c:var(--f-data);flex:12 1 120px"><span class="r">04–E7 (low range)</span><span class="k">HID usage · Keyboard type</span></div>
+  <div style="--c:var(--f-page);flex:3 1 60px"><span class="r">A5–AB</span><span class="k">Multimedia</span></div>
+  <div style="--c:var(--f-cmd);flex:1 1 42px"><span class="r">B4</span><span class="k">Macro</span></div>
+  <div style="--c:var(--f-cmd);flex:1 1 42px"><span class="r">B8</span><span class="k">Text</span></div>
+  <div style="--c:var(--f-idx);flex:3 1 70px"><span class="r">C0–C8</span><span class="k">Windows Shortcuts</span></div>
+  <div class="gap" style="flex:1 1 34px"><span class="r">C3 C4</span><span class="k">hole</span></div>
+  <div style="--c:var(--f-idx);flex:3 1 64px"><span class="r">CE–D5</span><span class="k">Mouse Function</span></div>
+</div>
+</div>
+
+<div class="col">
+<p>Cross-confirmation: the Multimedia codes (<code>a5</code>–<code>a9</code>)
+are exactly the ones the factory table already carries in the slots of the
+physical media keys — 105, 106, 107, 115 and 116.</p>
+<p><b>Disable writes <code>0x00</code>; Default restores the native HID.</b>
+Modifiers are ordinary keys: Ctrl is HID <code>0xE0</code>, there is no
+modifier field.</p>
+</div>
+
+<div class="note">
+  <div class="hd">Text never reaches the keyboard</div>
+  <p>A Text's content does not appear on the wire, not even with "Save to
+  Device Memory" — only the name goes. The consequence: <b>a key with a Text
+  function only works with G.SKILL's app running.</b> It is not a capture gap, it is the
+  product's design. <span class="conf c-c">C</span></p>
+</div>
+
+<!-- ===================== EFFECTS ===================== -->
+<h2 id="effects">Animated effects</h2>
+<div class="col">
+<p>The active effect is <b>byte 10 of the mode</b>. The UI offers exactly 8
+effects, all of them mapped; the IDs <code>0x05</code> and <code>0x06</code> do
+not exist in it. Each effect <b>keeps its own duration</b>: switching
+effect and coming back restores the previous value.</p>
+</div>
+
+<div class="tscroll">
+<table>
+<thead><tr><th class="m">byte 10</th><th>Effect</th><th>Helper commands</th></tr></thead>
+<tbody>
+<tr><td class="m">0x00</td><td><b>none</b> — effects off</td><td>—</td></tr>
+<tr><td class="m">0x01</td><td>Wave</td><td>—</td></tr>
+<tr><td class="m">0x02</td><td>Ripple</td><td class="m">0x0B ×3 channels, buf[4]=0x00</td></tr>
+<tr><td class="m">0x03</td><td>Sonic</td><td class="m">0x0B ×3 channels, buf[4]=0x01</td></tr>
+<tr><td class="m">0x04</td><td>Breathing</td><td>—</td></tr>
+<tr><td class="m">0x07</td><td>Changeling</td><td class="m">0x0E (04 03 fc) + 0x15 ×3</td></tr>
+<tr><td class="m">0x08</td><td><b>Checkpoint</b> — uses "Transition Point" (number of keys) instead of duration/direction</td><td>—</td></tr>
+<tr><td class="m">0x09</td><td>Cycle</td><td class="m">0x0E zeroed</td></tr>
+<tr><td class="m">0x0A</td><td>Rain</td><td class="m">0x0F (03 03 fc) + 0x12 ×3</td></tr>
+</tbody>
+</table>
+<p style="font-size:.84rem;color:var(--dim);max-width:62ch">The "×3
+channels" helpers use <code>buf[3] = 1, 2, 3</code>, the same R/G/B convention as the
+<code>0x09</code>. They came with a zeroed payload: they are a per-key mask or color, and
+<b>the UI only applies a global effect</b>, so there is no way to exercise them through it.
+<span class="conf c-i">I</span></p>
+</div>
+
+<h3>The color stop · <code>0x0A</code> subpages 02/05/08</h3>
+<div class="scroll">
+<div class="ruler" style="min-width:640px">
+  <div class="fld" style="--c:var(--f-zero);flex:1 1 34px"><span class="off">0</span><span class="nm">00</span></div>
+  <div class="fld" style="--c:var(--f-data);flex:1 1 60px"><span class="off">1</span><span class="nm">duration</span><span class="vl">seconds</span></div>
+  <div class="fld" style="--c:var(--f-data);flex:1 1 60px"><span class="off">2</span><span class="nm">direction</span><span class="vl">0↑ 1↓ 2← 3→</span></div>
+  <div class="fld" style="--c:var(--f-cmd);flex:1 1 60px"><span class="off">3</span><span class="nm">no. of stops</span><span class="vl">N</span></div>
+  <div class="fld" style="--c:var(--f-page);flex:5 1 200px"><span class="off">4 …</span><span class="nm">N stops of 5 bytes</span><span class="vl">R G B intensity position</span></div>
+</div>
+</div>
+<div class="col">
+<p>Intensity and position run 0–100. Validated by working the Color Controller:
+changing the color changed only the stop's RGB, dragging horizontally changed
+only the position, dragging vertically changed only the intensity, and adding a fourth
+stop incremented byte 3. <span class="conf c-c">C</span></p>
+</div>
+
+<h3><code>0x08</code> · the rasterized gradient</h3>
+<div class="col">
+<p>69 data bytes (8–76) = <b>3 channels × 23 steps</b>: the gradient of the
+gradient interpolated step by step, <b>cyclically</b> — the last step wraps to
+to the first, because the effect runs in a loop. The values are quantized in
+<b>6 bits, stored shifted by 2</b>.</p>
+</div>
+
+<div class="chart" id="chart"></div>
+<p style="font-size:.84rem;color:var(--dim);max-width:62ch">Example of a
+2-stop gradient, red at position 0 and blue at 100. G is zero across the 23
+steps because there is no green in the gradient; R falls and rises again at the end, B does the
+mirror. Values in raw bytes, as they go out on the wire.</p>
+
+<div class="tscroll">
+<table>
+<thead><tr><th class="m">byte</th><th class="m">00</th><th class="m">38</th><th class="m">4c</th><th class="m">60</th><th class="m">7c</th><th class="m">98</th><th class="m">c4</th><th class="m">e0</th><th class="m">fc</th></tr></thead>
+<tbody><tr><td><b>&gt;&gt; 2</b></td><td class="m">0</td><td class="m">14</td><td class="m">19</td><td class="m">24</td><td class="m">31</td><td class="m">38</td><td class="m">49</td><td class="m">56</td><td class="m">63</td></tr></tbody>
+</table>
+</div>
+
+<!-- ===================== MACRO ===================== -->
+<h2 id="macro">0x05 · macro content</h2>
+<div class="col">
+<p>Sent in three banks: <code>buf[2]</code> = mode,
+<code>buf[3] = 0x00</code>, <code>buf[4] = 1, 2, 3</code>. After a
+<code>00 01</code> header in bytes 8–9 come <b>3-byte records</b>.</p>
+</div>
+
+<div class="scroll">
+<div class="ruler" style="min-width:420px">
+  <div class="fld" style="--c:var(--f-cmd);flex:1"><span class="off">+0</span><span class="nm">flag</span><span class="vl">press/release + high delay</span></div>
+  <div class="fld" style="--c:var(--f-data);flex:1"><span class="off">+1</span><span class="nm">delay</span><span class="vl">units of 10 ms</span></div>
+  <div class="fld" style="--c:var(--f-page);flex:1"><span class="off">+2</span><span class="nm">HID usage</span><span class="vl">the key</span></div>
+</div>
+</div>
+
+<h3>The flag byte, bit by bit</h3>
+<div class="scroll">
+<div class="bits">
+  <div class="m7"><span class="bn">7</span><span class="bv">P/R</span></div>
+  <div><span class="bn">6</span><span class="bv">—</span></div>
+  <div><span class="bn">5</span><span class="bv">—</span></div>
+  <div><span class="bn">4</span><span class="bv">—</span></div>
+  <div style="background:var(--accent-soft)"><span class="bn">3</span><span class="bv">d11</span></div>
+  <div style="background:var(--accent-soft)"><span class="bn">2</span><span class="bv">d10</span></div>
+  <div style="background:var(--accent-soft)"><span class="bn">1</span><span class="bv">d9</span></div>
+  <div style="background:var(--accent-soft)"><span class="bn">0</span><span class="bv">d8</span></div>
+</div>
+</div>
+<div class="col">
+<p>Bit 7: <code>1</code> = press, <code>0</code> = release. The <b>low
+nibble</b> carries the delay's high bits:</p>
+<p style="font-family:var(--mono);font-size:.85rem">delay = ((flag &amp; 0x0F)
+&lt;&lt; 8) | delay_byte &nbsp;&nbsp;<span style="color:var(--dim)">× 10
+ms</span></p>
+<p>A single byte saturates at 2.55 s; with the extension the ceiling goes to
+<b>~41 s</b>. Validated against a macro with an 8.65 s pause and another with
+Ctrl+C: events and delays match one for one what the app shows on screen.
+<span class="conf c-c">C</span></p>
+<p>The UI does not allow mouse events inside a macro, only keys — a mouse
+function is a type of key assignment, a separate path. The macro's <b>name</b>
+goes by another path: <code>0x0A</code> page <code>0x09</code>, in
+ASCII.</p>
+</div>
+
+<h3><code>0x0A</code> · the page-indexed database</h3>
+<div class="tscroll">
+<table>
+<thead><tr><th class="m">buf[2]</th><th>Content</th></tr></thead>
+<tbody>
+<tr><td class="m">0x00</td><td>names: <code>ProfileN</code>, <code>Mode1</code>, <code>Mode2</code>, <code>Mode3</code></td></tr>
+<tr><td class="m">0x09</td><td>macro and text database (names in ASCII)</td></tr>
+<tr><td class="m">0x1b / 0x1c / 0x1d</td><td>database of mode 1 / 2 / 3 — identical structure across all three</td></tr>
+</tbody>
+</table>
+</div>
+<div class="tscroll">
+<table>
+<thead><tr><th class="m">buf[3]</th><th>Subpage, in the three mode databases</th></tr></thead>
+<tbody>
+<tr><td class="m">00, 03, 06</td><td>effect name in ASCII (<code>Default Wave</code>)</td></tr>
+<tr><td class="m">01, 04, 07</td><td>zeroed</td></tr>
+<tr><td class="m">02, 05, 08</td><td>effect parameters — duration, direction, color stops</td></tr>
+<tr><td class="m">09 / 0a</td><td>a pair: <code>09</code> empty, followed by <code>0a</code> with <b>(id, value) pairs</b> in bytes 11 and 12</td></tr>
+</tbody>
+</table>
+</div>
+
+<!-- ===================== INIT ===================== -->
+<h2 id="init">Initialization</h2>
+<div class="col">
+<p>28 packets in 3.2 s, from the <code>01-open</code> capture. <code>0x16</code>
+is always the first message, and <code>0x0D</code> appears as a begin/end pair
+around the writes. <span class="conf c-c">C</span></p>
+</div>
+
+<ol class="seq">
+  <li><span class="w">07 16 01</span> <span class="d">opens the session</span></li>
+  <li><span class="w">07 0d 00</span> <span class="d">enters configuration mode</span></li>
+  <li><span class="w">07 8a 00 00..03</span> <span class="d">reads page 0 — all 0xFF</span></li>
+  <li><span class="w">07 81 00</span> <span class="d">reads the active mode → <code>07 81 01</code></span></li>
+  <li><span class="w">07 82 01 / 02 / 03</span> <span class="d">reads the information of the 3 modes</span></li>
+  <li><span class="w">07 8a 1b/1c/1d …</span> <span class="d">reads the modes' databases — all 0xFF</span></li>
+  <li><span class="w">07 02 01 &lt;256 B&gt;</span> <span class="d">rewrites mode 1 unchanged</span></li>
+  <li><span class="w">07 0d 01</span> <span class="d">leaves configuration mode</span></li>
+  <li><span class="w">07 07 00 15</span> <span class="d">command 0x07, role unknown</span></li>
+</ol>
+
+<!-- ===================== GAPS ===================== -->
+<h2 id="gaps">What is missing</h2>
+<div class="col">
+<p>After 11 captures, Phase 1 — color and intensity — is closed. What is
+left, and why.</p>
+</div>
+
+<div class="tscroll">
+<table>
+<thead><tr><th>Item</th><th>Why it is still open</th></tr></thead>
+<tbody>
+<tr><td class="m">0x0B 0x0E 0x0F 0x12 0x15<br>with per-key data</td><td><b>capture does not settle it</b> — the UI only applies a global effect. It only comes out by decompilation.</td></tr>
+<tr><td>the macro's Playback Option</td><td>a dropdown of 4 options; the byte was not located</td></tr>
+<tr><td class="m">byte 108 vs byte 119</td><td>they are two distinct toggles (all lighting, volume display); which is which is still to be said</td></tr>
+<tr><td class="m">bytes 72–107</td><td>partial: 75–77 = number of color stops</td></tr>
+<tr><td class="m">buf[5], bytes 6–7</td><td>they came out zero in everything captured</td></tr>
+<tr><td class="m">the 02 04 XX 08 event</td><td>third byte = mode; the rest unknown</td></tr>
+<tr><td>LED Sleep</td><td>the control was never captured</td></tr>
+<tr><td class="m">reading page 0x09</td><td>the app never reads it. <b>Safe to test on Linux</b></td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="col">
+<p><b>The set observed on the wire</b>, 14 write and 4 read:</p>
+<p class="hex">01 02 05 07 08 09 0A 0B 0D 0E 0F 12 15 16 · 81 82 89 8A</p>
+</div>
+
+<footer>
+  <div>Source: <b>docs/09-protocol.md</b>, the canonical document, and
+  docs 12–21, one per capture. This page is a view of them, not the
+  specification.</div>
+  <div style="margin-top:.4rem">Captures in <b>captures/</b> · full map of
+  slots in <b>docs/10-key-map.md</b> · km780-rgb-linux</div>
+</footer>
+</div>
+
+<script>
+const SLOTS = {"0":[2049,"0x00","G/zone 0x801"],"1":[2050,"0x00","G/zone 0x802"],"2":[2051,"0x00","G/zone 0x803"],"3":[2052,"0x00","G/zone 0x804"],"4":[2053,"0x00","G/zone 0x805"],"5":[2054,"0x00","G/zone 0x806"],"6":[2055,"0xb3","G/zone 0x807"],"7":[2056,"0xad","G/zone 0x808"],"8":[2057,"0xae","G/zone 0x809"],"9":[27,"0x29","Esc"],"10":[192,"0x35","`"],"11":[9,"0x2b","Tab"],"12":[20,"0x39","CapsLock"],"13":[160,"0xe1","LShift"],"14":[162,"0xe0","LCtrl"],"15":[49,"0x1e","1"],"16":[226,"0x64","|"],"17":[91,"0xe3","LWin"],"18":[112,"0x3a","F1"],"19":[50,"0x1f","2"],"20":[81,"0x14","Q"],"21":[65,"0x04","A"],"22":[90,"0x1d","Z"],"23":[164,"0xe2","LAlt"],"24":[2058,"0xaf","G/zone 0x80a"],"25":[87,"0x1a","W"],"26":[88,"0x1b","X"],"27":[113,"0x3b","F2"],"28":[51,"0x20","3"],"29":[69,"0x08","E"],"30":[83,"0x16","S"],"31":[67,"0x06","C"],"32":[25,"0x91","VK25"],"33":[114,"0x3c","F3"],"34":[68,"0x07","D"],"35":[0,"0x8b","international (hid 0x8b)"],"36":[115,"0x3d","F4"],"37":[52,"0x21","4"],"38":[82,"0x15","R"],"39":[70,"0x09","F"],"40":[86,"0x19","V"],"41":[53,"0x22","5"],"42":[2059,"0xb9","G/zone 0x80b"],"43":[2060,"0xbb","G/zone 0x80c"],"44":[2061,"0xba","G/zone 0x80d"],"45":[116,"0x3e","F5"],"46":[54,"0x23","6"],"47":[84,"0x17","T"],"48":[71,"0x0a","G"],"49":[66,"0x05","B"],"50":[32,"0x2c","Space"],"51":[55,"0x24","7"],"52":[89,"0x1c","Y"],"53":[72,"0x0b","H"],"54":[117,"0x3f","F6"],"55":[56,"0x25","8"],"56":[85,"0x18","U"],"57":[74,"0x0d","J"],"58":[78,"0x11","N"],"59":[118,"0x40","F7"],"60":[73,"0x0c","I"],"61":[75,"0x0e","K"],"62":[77,"0x10","M"],"63":[119,"0x41","F8"],"64":[57,"0x26","9"],"65":[79,"0x12","O"],"66":[76,"0x0f","L"],"67":[188,"0x36",","],"68":[61,"0x90","VK61"],"69":[120,"0x42","F9"],"70":[48,"0x27","0"],"71":[28,"0x8a","VK28"],"72":[219,"0x2f","["],"73":[189,"0x2d","-"],"74":[80,"0x13","P"],"75":[186,"0x33",";"],"76":[190,"0x37","."],"77":[165,"0xe6","RAlt"],"78":[191,"0x38","/"],"79":[92,"0xe7","RWin"],"80":[0,"0x88","international (hid 0x88)"],"81":[122,"0x44","F11"],"82":[187,"0x2e","="],"83":[121,"0x43","F10"],"84":[222,"0x34","'"],"85":[2067,"0x87","G/zone 0x813"],"86":[93,"0x65","Menu"],"87":[221,"0x30","]"],"88":[22,"0x32","VK22"],"89":[163,"0xe4","RCtrl"],"90":[123,"0x45","F12"],"91":[0,"0x89","international (hid 0x89)"],"92":[220,"0x31","\\"],"93":[13,"0x28","Enter"],"94":[161,"0xe5","RShift"],"95":[37,"0x50","Left"],"96":[8,"0x2a","Backspace"],"97":[38,"0x52","Up"],"98":[40,"0x51","Down"],"99":[44,"0x46","PrtSc"],"100":[45,"0x49","Insert"],"101":[46,"0x4c","Delete"],"102":[145,"0x47","ScrLk"],"103":[36,"0x4a","Home"],"104":[35,"0x4d","End"],"105":[2062,"0xa5","G/zone 0x80e"],"106":[2063,"0xa6","G/zone 0x80f"],"107":[2064,"0xa7","G/zone 0x810"],"108":[19,"0x48","Pause"],"109":[33,"0x4b","PgUp"],"110":[34,"0x4e","PgDn"],"111":[100,"0x5c","Num4"],"112":[97,"0x59","Num1"],"113":[144,"0x53","NumLock"],"114":[103,"0x5f","Num7"],"115":[2065,"0xa9","G/zone 0x811"],"116":[2066,"0xa8","G/zone 0x812"],"117":[106,"0x55","Num*"],"118":[111,"0x54","Num/"],"119":[104,"0x60","Num8"],"120":[101,"0x5d","Num5"],"121":[98,"0x5a","Num2"],"122":[96,"0x62","Num0"],"123":[105,"0x61","Num9"],"124":[102,"0x5e","Num6"],"125":[39,"0x4f","Right"],"126":[108,"0x58","NumSep"],"127":[109,"0x56","Num-"],"128":[107,"0x57","Num+"],"129":[0,"0x85","international (hid 0x85)"],"130":[99,"0x5b","Num3"],"131":[110,"0x63","Num."]};
+
+/* ---------- command matrix ---------- */
+const CMD = {
+  0x01:["w","mode"],   0x02:["w","mode info"], 0x05:["w","macro"],
+  0x07:["w","?"],      0x08:["w","gradiente"], 0x09:["w","LED matrix"],
+  0x0A:["w","base"],   0x0B:["w","ripple"],    0x0D:["w","config"],
+  0x0E:["w","changel."],0x0F:["w","rain"],     0x12:["w","rain px"],
+  0x15:["w","changel."],0x16:["w","abre"],
+  0x81:["r","mode"],   0x82:["r","mode info"], 0x89:["r","LED matrix"],
+  0x8A:["r","base"]
+};
+const g = document.getElementById("cmdgrid");
+for (const list of [[0x00,0x18],[0x80,0x98]]) {
+  for (let c = list[0]; c < list[1]; c++) {
+    const e = CMD[c], d = document.createElement("div");
+    d.className = "cm " + (e ? e[0] : "no");
+    d.innerHTML = '<span class="h">' + c.toString(16).padStart(2,"0").toUpperCase() +
+      '</span><span class="t">' + (e ? e[1] : "") + "</span>";
+    g.appendChild(d);
+  }
+}
+
+/* ---------- keyboard ---------- */
+const ROWS = [
+ [["Esc",9],["sp",.55],["F1",18],["F2",27],["F3",33],["F4",36],["sp",.3],
+  ["F5",45],["F6",54],["F7",59],["F8",63],["sp",.3],["F9",69],["F10",83],["F11",81],["F12",90],
+  ["sp",.3],["PrtSc",99],["ScrLk",102],["Pause",108]],
+ [["`",10],["1",15],["2",19],["3",28],["4",37],["5",41],["6",46],["7",51],["8",55],["9",64],
+  ["0",70],["-",73],["=",82],["Bksp",96,2],["sp",.3],["Ins",100],["Home",103],["PgUp",109],
+  ["sp",.3],["NumLk",113],["Num/",118],["Num*",117],["Num-",127]],
+ [["Tab",11,1.5],["Q",20],["W",25],["E",29],["R",38],["T",47],["Y",52],["U",56],["I",60],
+  ["O",65],["P",74],["[",72],["]",87],["\\",92,1.5],["sp",.3],["Del",101],["End",104],["PgDn",110],
+  ["sp",.3],["Num7",114],["Num8",119],["Num9",123],["Num+",128]],
+ [["Caps",12,1.8],["A",21],["S",30],["D",34],["F",39],["G",48],["H",53],["J",57],["K",61],
+  ["L",66],[";",75],["'",84],["Enter",93,2.2],["sp",3.3],
+  ["Num4",111],["Num5",120],["Num6",124]],
+ [["LShift",13,2.3],["Z",22],["X",26],["C",31],["V",40],["B",49],["N",58],["M",62],[",",67],
+  [".",76],["/",78],["RShift",94,2.7],["sp",1.3],["Up",97],["sp",1.3],
+  ["Num1",112],["Num2",121],["Num3",130]],
+ [["LCtrl",14,1.4],["LWin",17,1.1],["LAlt",23,1.1],["Space",50,6.2],["RAlt",77,1.1],
+  ["RWin",79,1.1],["Menu",86,1.1],["RCtrl",89,1.4],["sp",.3],["Left",95],["Down",98],["Right",125],
+  ["sp",.3],["Num0",122,2],["Num.",131],["NumSep",126]]
+];
+const ORPHANS = [16,32,35,68,71,80,85,88,91,129];
+const kb = document.getElementById("kb"), ro = document.getElementById("readout");
+
+function show(slot, label) {
+  const s = SLOTS[slot];
+  if (!s) { ro.textContent = ""; return; }
+  const vk = s[0] >= 0x800 ? "—  (synthetic ID 0x" + s[0].toString(16) + ")" : s[0];
+  ro.innerHTML = '<div class="big">slot ' + slot + '  ·  ' + label + "</div>" +
+    '<dl><div class="pair"><dt>HID usage</dt><dd>' + s[1] + "</dd></div>" +
+    '<div class="pair"><dt>virtual-key</dt><dd>' + vk + "</dd></div>" +
+    '<div class="pair"><dt>byte no 0x09</dt><dd>' + (8 + slot) + "</dd></div>" +
+    '<div class="pair"><dt>byte no 0x02</dt><dd>' + (120 + slot) + "</dd></div></dl>";
+}
+function mkKey(label, slot, w) {
+  const b = document.createElement("button");
+  b.type = "button"; b.className = "k"; b.style.setProperty("--w", w || 1);
+  b.setAttribute("aria-pressed", "false");
+  b.setAttribute("aria-label", label + ", slot " + slot);
+  b.innerHTML = '<span class="s">' + slot + '</span><span class="t">' + 
+    label.replace(/&/g,"&amp;").replace(/</g,"&lt;") + "</span>";
+  b.addEventListener("click", () => {
+    kb.querySelectorAll('[aria-pressed="true"]').forEach(k => k.setAttribute("aria-pressed","false"));
+    document.querySelectorAll('.orphans [aria-pressed="true"]').forEach(k => k.setAttribute("aria-pressed","false"));
+    b.setAttribute("aria-pressed", "true");
+    show(slot, label);
+  });
+  return b;
+}
+ROWS.forEach(row => {
+  const r = document.createElement("div");
+  r.className = "kbrow";
+  row.forEach(([label, a, w]) => {
+    if (label === "sp") {
+      const s = document.createElement("div");
+      s.className = "sp";
+      s.style.width = "calc(" + a + " * var(--ku))";
+      r.appendChild(s);
+    } else r.appendChild(mkKey(label, a, w));
+  });
+  kb.appendChild(r);
+});
+const orph = document.getElementById("orphans");
+ORPHANS.forEach(slot => {
+  const nm = SLOTS[slot][2].replace("international ", "intl ").replace("G/zone ", "zone ");
+  const b = mkKey(nm, slot, 2.4);
+  b.style.height = "auto"; b.style.minHeight = "var(--ku)";
+  orph.appendChild(b);
+});
+show(45, "F5");
+
+/* ---------- 0x08 gradient chart ---------- */
+const R = [].concat(Array(5).fill(252), Array(6).fill(124), Array(6).fill(0), Array(6).fill(124));
+const B = [].concat(Array(5).fill(0), Array(6).fill(124), Array(6).fill(252), Array(6).fill(124));
+const G0 = Array(23).fill(0);
+const W = 660, H = 190, PL = 34, PR = 10, PT = 12, PB = 26;
+const n = 23, bw = (W - PL - PR) / n;
+const y = v => PT + (H - PT - PB) * (1 - v / 255);
+let svg = '<svg viewBox="0 0 ' + W + " " + H + '" role="img" ' +
+  'aria-label="The 23 steps of the rasterized gradient, per channel. R starts at 252, falls to 124 and to 0, and returns to 124 at the end. B mirrors it. G is zero across the 23 steps.">';
+[0, 64, 128, 192, 252].forEach(v => {
+  svg += '<line x1="' + PL + '" x2="' + (W - PR) + '" y1="' + y(v) + '" y2="' + y(v) +
+    '" stroke="var(--rule)" stroke-width="1"/>' +
+    '<text x="' + (PL - 6) + '" y="' + (y(v) + 3.5) + '" text-anchor="end" fill="var(--dim)" ' +
+    'font-size="9" font-family="var(--mono)">' + v + "</text>";
+});
+[[R, "#c0392b", "R"], [G0, "#1f8b4c", "G"], [B, "#2d5ca8", "B"]].forEach(([arr, col, nm]) => {
+  let d = "";
+  arr.forEach((v, i) => {
+    const x0 = PL + i * bw;
+    d += (i ? "L" : "M") + x0 + " " + y(v) + "L" + (x0 + bw) + " " + y(v);
+  });
+  svg += '<path d="' + d + '" fill="none" stroke="' + col + '" stroke-width="2.2" ' +
+    'stroke-linejoin="round" opacity="' + (nm === "G" ? .85 : 1) + '"/>';
+});
+for (let i = 0; i < n; i += 2) {
+  svg += '<text x="' + (PL + i * bw + bw / 2) + '" y="' + (H - 9) + '" text-anchor="middle" ' +
+    'fill="var(--dim)" font-size="8.5" font-family="var(--mono)">' + i + "</text>";
+}
+svg += '<text x="' + (W - PR) + '" y="' + (H - 9) + '" text-anchor="end" fill="var(--dim)" ' +
+  'font-size="8.5" font-family="var(--mono)">passo</text>';
+svg += "</svg>";
+document.getElementById("chart").innerHTML = svg;
+</script>
