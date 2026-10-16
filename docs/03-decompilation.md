@@ -63,6 +63,50 @@ Available on this machine: `7z`, `file`, `strings`, `objdump`.
 Missing (in the Fedora repos): `innoextract`, `binwalk`.
 For .NET: `ilspycmd` / ILSpy, or `monodis`.
 
+## Installer naming schemes
+
+The CDX query (`external/gds/cdx-2026-10-16.md`) revealed **two** schemes,
+different from the initial guesses:
+
+**Old era (2015), in a per-model subfolder:**
+
+    /gskill-device/keyboard/RGB/G.SKILL_RIPJAWS_Keyboard_KM780_RGB_v0.61_Setup.zip
+    /gskill-device/keyboard/MX/G.SKILL_RIPJAWS_Keyboard_KM780_MX_v0.59_Setup.zip
+
+(underscore after `RIPJAWS`, lowercase `v`, `_Setup` at the end)
+
+**New era, at the root:**
+
+    /gskill-device/keyboard/G.SKILL_RIPJAWSKeyboard_KM780_RGB_Setup_V0.105.zip
+    /gskill-device/keyboard/G.SKILL_RIPJAWSKeyboard_KM780_RGB_Setup_V2.03.zip
+
+So a **V0.105** RGB build exists, besides the **v0.61** from 2015.
+
 ## Findings
 
-(nothing yet — waiting for the installers)
+### Archived and intact
+
+- **KM780 MX v0.59** (2015-10-16), 12,946,127 bytes — it was .NET. A viable
+  secondary target (non-RGB model, but a shared code base).
+
+      https://web.archive.org/web/20151016190901id_/http://www.gskill.com/gskill-device/keyboard/MX/G.SKILL_RIPJAWS_Keyboard_KM780_MX_v0.59_Setup.zip
+
+### Archived but corrupt (an error page, not the binary)
+
+- KM780 RGB v0.61 — snapshot 20151015105904 is only 572 B
+- KM780 RGB V0.105 — the 2025/2026 snapshots are 359 to 8946 B
+
+For both: query the CDX again **without** `collapse=original`, which hides the
+other snapshots. Look for `statuscode` 200 with a `length` in the millions.
+
+### A note on the Wayback Machine
+
+To download a binary from the Wayback Machine, insert `id_` after the
+timestamp: `/web/<timestamp>id_/<url>`. Without it you get the HTML wrapper and
+the file is corrupt.
+
+### Manuals (they may hold the key map)
+
+The software manuals 1.15h/1.16d/1.16e/1.17f are archived intact (2 to 3 MB).
+Worth a look: RGB manuals sometimes show the LED numbering/zones, which would
+help validate the key→offset map.
