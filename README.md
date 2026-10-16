@@ -28,6 +28,7 @@ goal of this project.
 |---|---|
 | USB transport (framing, endpoints, commands) | **known** — see `docs/01-transport.md` |
 | LED payload layout / key→offset map | **unknown** — that is the target |
+| Byte-by-byte protocol specification | in progress — `docs/09-protocol.md` |
 | Read-only probing tool | ready — `tools/km780.py` |
 | USB capture of the official software (Windows) | planned — `docs/02-usb-capture.md` |
 | Vendor installers obtained and extracted | **done** — `docs/06-binaries.md` |
@@ -35,6 +36,14 @@ goal of this project.
 | Firmware + MCU identified | **done** — `docs/04-firmware.md` |
 | RE tooling (Ghidra 12.1.4 + REA) | **done** — `docs/07-tooling.md` |
 | Analysis of `Setting.dll` in Ghidra | in progress |
+
+## Order of work
+
+Document **the whole** protocol, field by field, **before** writing the
+tool. Do not stop at the minimum needed to light up one key: cover the
+four command pairs (`0x01/0x81`, `0x02/0x82`, `0x08/0x88`, `0x09/0x89`).
+The canonical specification is `docs/09-protocol.md`; the gaps are listed
+in its section 9.
 
 ## Three lines of attack
 
