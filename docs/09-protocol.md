@@ -182,29 +182,45 @@ read/write the onboard flash between pages.
 
 ## 3. Command table
 
-### 3.1 Named (from the abandoned repo, the app's symbolic names)  [C]
+### 3.1 The set observed in `Setting.dll` v2.04  [C]
 
-| Command | Set | Get |
-|---|---|---|
-| Current Profile | `0x01` | `0x81` |
-| Profile Information | `0x02` | `0x82` |
-| LED Effect Database | `0x08` | `0x88` |
-| LED Matrix Database | `0x09` | `0x89` |
+Obtained by sweeping `.text` for the pattern `mov byte [buf+0], 0x07` followed
+by `mov byte [buf+1], <cmd>`, in the four addressing forms MSVC emitted
+(`esp`/`ebp`, disp8/disp32). Tool: `tools/pescan.py`.
 
-### 3.2 Discovered in `Setting.dll`, unnamed  [C]
+| Write | Read | Known name | Sites |
+|---|---|---|---|
+| `0x01` | `0x81` | Current Profile | `0x100d1cb5` `0x100d1e0f` / `0x100d9014` |
+| `0x02` | `0x82` | Profile Information | `0x100d4ebd` / `0x100d90f5` |
+| `0x05` | `0x85` | — | `0x100d7d14` `0x100d500b` / `0x100d9b05` `0x100da909` |
+| `0x09` | `0x89` | **LED Matrix Database** | **`0x100d6c12`** / `0x100db05d` |
+| `0x0A` | `0x8A` | — | `0x100dbb94` `0x100dba93` / `0x100dbc5c` |
+| `0x0D` | `0x8D`? | — | `0x100d1ecb` / not observed |
+| `0x12` | `0x92` | — | `0x100d7642` / `0x100db4e6` |
+| `0x16` | `0x96`? | — | `0x100d1f7e` / not observed |
 
-| Command | Where it showed up | Notes |
-|---|---|---|
-| `0x8B` | `FUN_100db460`, `param_2` ∈ {2, 3} | paged; `buf[5]` = `param_2 != 2` |
-| `0x92` | `FUN_100db460`, `param_2 == 10` | paged; without the `buf[5]` flag |
+**15 distinct commands across 19 sites.** The abandoned repo's list (4 commands)
+covered a little over a quarter of that.
 
-**The abandoned repo's list is incomplete.** If the bit 7 convention holds
-(bit 7 = read), the write counterparts would be `0x0B` and `0x12`.  [I]
+### 3.2 The bit-7 convention  [C]
 
-Apparent convention: bit 7 set = read.  [I]
-The complete command set is still unknown.  [?]
+**Confirmed empirically**, no longer inferred: six write/read pairs
+observed (`0x01`/`0x81`, `0x02`/`0x82`, `0x05`/`0x85`, `0x09`/`0x89`,
+`0x0A`/`0x8A`, `0x12`/`0x92`). Bit 7 set = read.
 
----
+### 3.3 Limits of this list  [?]
+
+**It is a floor, not the complete set.** 19 sites with an *immediate* command
+byte were found, but there are **37** `push 0x108` in the binary. The difference
+is sites that load the command from a register (a command variable at run time),
+out of this sweep's reach.
+
+That also explains why `0x08`/`0x88` — which the abandoned repo calls "LED
+Effect Database" — **do not appear** here: either they are written via a
+register, or v2.04 stopped using them.
+
+How to close it: disassemble the remaining 18 sites, and probe the keyboard with
+unobserved `0x8x` values (reads are safe).
 
 ## PHASE 1 — color and intensity
 
@@ -302,7 +318,7 @@ via `HidDevice_GetDevVersion`.
 | 5 | format of the `0x08` and the effect catalog | 7 |
 | 6 | payloads de `0x01` e `0x02` | 4, 5 |
 | 7 | bytes 3–7 of the ACK (and whether the ACK matters, since the official app ignores it) | 1.3 |
-| 8 | the complete command set — `0x8B` and `0x92` have already poked a hole in the list | 3 |
+| 8 | the complete command set — 15 mapped so far, but it is a floor (see 3.3) | 3 |
 | 9 | meaning of `buf[2]`, `buf[5]`, and of bytes 6–7 of the header | 2 |
 
 For gap 8, two approaches: extract the command bytes from all 37
