@@ -629,6 +629,44 @@ effect and coming back restores the previous value.</p>
 <code>buf[3]</code>. They came with a zeroed payload because the UI only
 applies a global effect, but the field exists: see below.</p>
 
+<h3><code>0x0E</code> and <code>0x0F</code>: gradient per effect slot</h3>
+<div class="col">
+<p>On the wire, these two seemed to have two regularities that did not fit: a
+base every <b>71</b> bytes and values every <b>24</b>. They do fit — the 24 was
+an artefact.</p>
+<p>Sweeping <code>FUN_100d5060</code> for the structural constants,
+<b>only 23 appears</b>, in a floating-point context: it is the gradient's
+interpolation. <b>24 does not exist in the function</b>, so it could not be a
+real.</p>
+</div>
+
+<div class="scroll">
+<div class="ruler" style="min-width:700px">
+  <div class="fld" style="--c:var(--f-cmd);flex:2 1 40px"><span class="off">+0 +1</span><span class="nm">header</span><span class="vl">duration, direction?</span></div>
+  <div class="fld" style="--c:#c0392b;flex:23 1 120px"><span class="off">+2 … +24</span><span class="nm">channel R, 23 steps</span></div>
+  <div class="fld" style="--c:#1f8b4c;flex:23 1 120px"><span class="off">+25 … +47</span><span class="nm">channel G, 23 steps</span></div>
+  <div class="fld" style="--c:#2d5ca8;flex:23 1 120px"><span class="off">+48 … +70</span><span class="nm">channel B, 23 steps</span></div>
+</div>
+</div>
+
+<div class="col">
+<p>A slot is <b>71 bytes</b> and the packet carries <b>three</b>, at 8, 79 and
+150 — the three <b>effect slots per mode</b>, the same ones as subpages
+<code>02</code>/<code>05</code>/<code>08</code> of <code>0x0A</code>. The slot
+used changes from packet to packet, which is how we know.</p>
+<p>The “+24” was the sum of two things: the planar step of <b>23</b> plus a step
+of <b>+1</b> in the index within the channel. The five captured packets have a
+value at <b>channel 0 step 0, channel 1 step 1, channel 2 step 2</b> — the
+diagonal. In absolute offsets that gives 10, 34 and 58, a difference of 24, without a 24 existing
+anywhere. Five out of five packets decode that way.
+<span class="conf c-c">C</span></p>
+<p>In other words: <code>0x0E</code> and <code>0x0F</code> carry a
+<b>gradient</b>, not per-key data. They are siblings of <code>0x08</code> — the
+same function builds all three — and not of
+<code>0x0B</code>/<code>0x12</code>/<code>0x15</code>, which come out of
+<code>FUN_100d7170</code> and are these:</p>
+</div>
+
 <h3>The 144 per-key bytes of <code>0x0B</code>, <code>0x12</code> and <code>0x15</code></h3>
 <div class="col">
 <p>This was the biggest gap — the one the specification called <b>impossible to
@@ -806,8 +844,8 @@ left, and why.</p>
 <table>
 <thead><tr><th>Item</th><th>Why it is still open</th></tr></thead>
 <tbody>
-<tr><td class="m">internal layout of<br>0x0E and 0x0F</td><td>the function <b>was located</b>: <code>FUN_100d5060</code>, the same one that builds the <code>0x08</code> — all three are the same generator. It still has to be decompiled: 6,911 bytes in 5 non-contiguous stretches. <b>Only by decompilation.</b></td></tr>
-<tr><td class="m">blocks of the 0x08<br>after byte 76</td><td>they exist in 6 of the 37 packets, with a stride of 24 instead of 23. How many blocks, and what picks the format. <b>Only by decompilation.</b></td></tr>
+<tr><td class="m">one anomalous 0x08</td><td>one packet of the 37 (<code>04-effects</code> f2057) has its first block zeroed and a gradient starting at byte 77, which aligns with neither 69 nor 71</td></tr>
+<tr><td class="m">header of the 0x0E / 0x0F<br>slots</td><td>the 2 bytes look like duration and direction, by position and by range, but they were not exercised <span class="conf c-i">I</span></td></tr>
 <tr><td class="m">the role of 0x07</td><td>the only command on the wire with no build site located. It appears once, at the end of init, as <code>07 07 00 15</code>.</td></tr>
 <tr><td>the macro's Playback Option</td><td>a dropdown of 4 options; the byte was not located. <b>Only by decompilation.</b></td></tr>
 <tr><td class="m">byte 108 vs byte 119</td><td>they are two distinct toggles (all lighting, volume display); which is which is still to be said. <b>Settleable by experiment</b> — see below.</td></tr>

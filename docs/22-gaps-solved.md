@@ -221,50 +221,67 @@ wrong.
 
 ---
 
-## 4. `0x0E` / `0x0F`: the observed shape  [I]
+## 4. `0x0E` / `0x0F`: solved  [C]
 
-Five packets captured, all of them with almost everything zero. The non-zero
-bytes form a clean pattern:
+The shape on the wire seemed to have two regularities that did not fit — a base
+every **71** bytes and values every **24**. They do fit: the 24 was an artefact.
 
-    0x0e f2261:    8:04  9:03  10:fc   34:fc   58:fc
-    0x0f f2363:    8:03  9:03  10:fc   34:fc   58:fc   80:04
-    0x0e f789:    79:03 80:03  81:fc  105:fc  129:fc
-    0x0e f877:    79:06 80:03  81:fc  105:fc  129:fc
-    0x0e f1975:  150:03 151:03 152:fc 176:fc 200:fc
+### What the binary said
 
-Two regularities:
+Sweeping the 6,906 bytes of `FUN_100d5060` for the structural constants (71,
+69, 72, 24, 23), only **23** appears — as `imul r,r,23`, `cmp r,23` and
+`add r,23`, and in a floating-point context (`fild`, `fadd`, `fstp`), which is
+the gradient interpolation. **`24` does not exist in the function.** So a stride
+of 24 could not be real.
 
-- inside a record: two header bytes, then `0xfc` every **24**
-- the three observed bases — 8, 79, 150 — are **71** apart from each other
+### The layout
 
-71 = 2 + 3×23 and 24 does not square with 23, so the two regularities still do
-not reconcile into a single layout. `0xfc` is again the maximum value of the
-6-bit quantization. The three bases are probably the **three effect slots per
-mode**, the same ones as sub-pages `02`/`05`/`08` of `0x0A`.  [I]
+    effect slot = 71 bytes = [2 of header][3 channels x 23 steps, planar]
+    the packet's three slots sit at 8, 79 and 150   (8 + 71k)
 
-### The function has been located  [C]
+The "+24" was the sum of two things: a planar stride of **23** plus a step of
+**+1** in the index within the channel. The captured packets carry a value at
 
-Neither of the two comes out of `FUN_100d7170`. They come out of
-**`FUN_100d5060`** (6,911 bytes), which writes the command byte at:
+    channel 0, step 0  ·  channel 1, step 1  ·  channel 2, step 2
 
-    0x100d5983   mov byte [esp+0x73b8d], 0x0f
-    0x100d5c69   mov byte [esp+0x73b8d], 0x0e
+that is, the diagonal — R at step 0, G at step 1, B at step 2. In absolute
+offsets that gives 10, 34, 58: a difference of 24, without a 24 existing
+anywhere.
 
-The same `buf[1]`, the same function — and **`FUN_100d5060` also builds
-`0x08`** (site at `0x100d6ace`). That ties the three together: `0x08`, `0x0E`
-and `0x0F` are the same generator, which explains why their shape in the
-capture looks alike, and why the extra blocks of `0x08` (§3) have the same
-step of 24 as the `0x0E` records.
+### It checks out against all five packets
 
-Neither of them calls `SetFeature` there — the packet is built and sent along
-another path, which is why they do not show up in the sweep of send sites.
+| Packet | slot | base | header | values |
+|---|---|---|---|---|
+| `0x0E` f2261 | 0 | 8 | `04 03` | ch0[0] ch1[1] ch2[2] = `fc` |
+| `0x0E` f789 | 1 | 79 | `03 03` | same |
+| `0x0E` f877 | 1 | 79 | `06 03` | same |
+| `0x0E` f1975 | 2 | 150 | `03 03` | same |
+| `0x0F` f2363 | 0 | 8 | `03 03` | same (and slot 1 with header `00 04`) |
 
-**What is missing:** the function is 6,911 bytes across 5 non-contiguous
-stretches; decompiling all of it is the next step, and an expensive one. It is
-worth doing with a target: only the stretch that picks the base (8, 79 or 150)
-and the one that fills the record.
+**Five out of five.** And the slot used changes from packet to packet, which
+confirms that the three bases are the **three effect slots per mode** — the same
+ones as subpages `02`/`05`/`08` of `0x0A` (§7.4 of the specification).
 
----
+The second header byte is `03` in almost all of them and `04` in one; the first
+varies between `03`/`04`/`06`. By position and by range, these are **duration
+and direction**, as in `0x0A` — but that is still `[I]`, it has not been
+exercised.
+
+### What this means in practice
+
+`0x0E` and `0x0F` carry a **gradient per effect slot**, not per-key data. They
+are siblings of `0x08`, not of `0x0B`/`0x12`/`0x15`. That makes sense: the same
+function builds all three, and the per-key ones come out of `FUN_100d7170`.
+
+Since the color tooling does not need to write effects, this is specification
+completeness, not a blocker.
+
+### What was left out
+
+A single `0x08` packet (`04-effects` f2057) has its first block **zeroed** and a
+complete gradient starting at byte 77, which aligns with neither 69- nor
+71-byte blocks. It is the only one of the 37 like that. It stays `[?]` — one
+anomalous packet does not bring down a model that explains the other 41.
 
 ## 5. The send sites: there are 23, not 19 and not 37  [C]
 

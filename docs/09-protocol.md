@@ -203,8 +203,8 @@ by `mov byte [buf+1], <cmd>`, in the four addressing forms MSVC emitted
 | `0x0A` | `0x8A` | — | `0x100dbb94` `0x100dba93` / `0x100dbc5c` |
 | `0x0D` | `0x8D`? | — | `0x100d1ecb` / not observed |
 | `0x0B` | `0x8B` | **Ripple / Sonic** | `FUN_100d7170` / `0x100db5ec` |
-| `0x0E` | ? | — | `0x100d5c69` (`FUN_100d5060`) |
-| `0x0F` | ? | — | `0x100d5983` (`FUN_100d5060`) |
+| `0x0E` | ? | **gradient per effect slot** | `0x100d5c69` (`FUN_100d5060`) |
+| `0x0F` | ? | **idem** | `0x100d5983` (`FUN_100d5060`) |
 | `0x12` | `0x92` | **Rain** | `0x100d7642` / `0x100db4ee` |
 | `0x15` | **`0x95`** | **Changeling** | `FUN_100d7170` / `0x100db565` |
 | `0x16` | `0x96`? | opens the session | `0x100d1f7e` / not observed |
@@ -673,7 +673,7 @@ It is 28 packets in 3.2 s:
 | 5 | key assignment table | **solved** — section 5.1 |
 | 6 | payload of the `0x08` | **partial** — the 69 gradient bytes are right, but bytes up to 200 vary too, `22-gaps-solved.md` §3 [?] |
 | 7 | `0x0B`, `0x12`, `0x15` | **solved** — 144 bytes, one per slot, at byte 8, `22-gaps-solved.md` §1 [C] |
-| 7b | `0x0E`, `0x0F` | shape observed, the layout does not close — `22-gaps-solved.md` §4 [I] |
+| 7b | `0x0E`, `0x0F` | **solved** — 3 slots of 71 bytes at 8/79/150, each one `[2 hdr][3 channels × 23 steps]`, `22-gaps-solved.md` §4 [C] |
 | 8 | `0x07`, `0x0D`, `0x16` | role known (opening / frame / end of init), payload never varied [I] |
 | 9 | byte 108 vs byte 119 | they are **two distinct toggles**; likely assignment 119=volume display, 108=all lighting [I] — `docs/19` §4 |
 | 10 | bytes 72–107 of the config block | partial: 75–77 = number of color stops |
