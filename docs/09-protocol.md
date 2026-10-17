@@ -202,17 +202,28 @@ by `mov byte [buf+1], <cmd>`, in the four addressing forms MSVC emitted
 | `0x09` | `0x89` | **LED Matrix Database** | **`0x100d6c12`** / `0x100db05d` |
 | `0x0A` | `0x8A` | — | `0x100dbb94` `0x100dba93` / `0x100dbc5c` |
 | `0x0D` | `0x8D`? | — | `0x100d1ecb` / not observed |
-| `0x12` | `0x92` | — | `0x100d7642` / `0x100db4e6` |
-| `0x16` | `0x96`? | — | `0x100d1f7e` / not observed |
+| `0x0B` | `0x8B` | **Ripple / Sonic** | `FUN_100d7170` / `0x100db5ec` |
+| `0x0E` | ? | — | `0x100d5c69` (`FUN_100d5060`) |
+| `0x0F` | ? | — | `0x100d5983` (`FUN_100d5060`) |
+| `0x12` | `0x92` | **Rain** | `0x100d7642` / `0x100db4ee` |
+| `0x15` | **`0x95`** | **Changeling** | `FUN_100d7170` / `0x100db565` |
+| `0x16` | `0x96`? | opens the session | `0x100d1f7e` / not observed |
 
 **15 distinct commands across 19 sites.** The abandoned repo's list (4 commands)
 covered a little over a quarter of that.
 
 ### 3.2 The bit-7 convention  [C]
 
-**Confirmed empirically**, no longer inferred: six write/read pairs
-observed (`0x01`/`0x81`, `0x02`/`0x82`, `0x05`/`0x85`, `0x09`/`0x89`,
-`0x0A`/`0x8A`, `0x12`/`0x92`). Bit 7 set = read.
+**Confirmed empirically**, no longer inferred. **Nine pairs**: four seen
+answering on the wire (`0x01`/`0x81`, `0x02`/`0x82`, `0x09`/`0x89`,
+`0x0A`/`0x8A`), and five confirmed in the binary — `0x05`/`0x85`, plus
+`0x0B`/`0x8B`, `0x12`/`0x92` and `0x15`/**`0x95`**, the three emitted by
+`FUN_100db460` (`22-gaps-solved.md` §5b). Bit 7 set = a read.
+
+**But the rule does not extend to arbitrary bytes.** The confirmed read space
+ends at `0x95`; probing above that is what put the keyboard into bootloader
+mode, and `0x96` — which would be the read of `0x16` — is the prime suspect.
+See the warning in the README.
 
 ### 3.3 Limits of this list  [?]
 

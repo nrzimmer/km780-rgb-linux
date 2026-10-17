@@ -5,7 +5,10 @@ Reads the same command in two different keyboard states (e.g. maximum and
 minimum brightness) and compares them. Whatever changes locates the field.
 
 Subcommands:
-  snap <file>         read the CONFIRMED read commands and save
+  snap <file> [--binary]
+                      read the read-commands confirmed on the wire and save.
+                      --binary adds 0x8B/0x92/0x95, which only the binary
+                      confirms (docs/22 section 5b).
   diff <a> <b>        compare two snapshots, byte by byte
   listen [seconds]    listen to the 8-byte event channel on EP 0x83
 
@@ -37,22 +40,35 @@ READS = {
     0x8A: 'page-indexed database',
 }
 
-# Never observed answering as a read. Kept here only to record that they were
-# tried and why they are not in READS.
+# Confirmed in the BINARY, not on the wire: Setting.dll v2.04 emits them in
+# FUN_100db460, with buf[3]=0 (see docs/22 section 5b). They do not show up in
+# the captures because that function does not run on the paths exercised.
+# Lower confidence than READS -- use with `snap --binary`, knowing what you are
+# doing.
+READS_BINARY = {
+    0x8B: 'read of 0x0B (Ripple/Sonic) -- site 0x100db5ec',
+    0x92: 'read of 0x12 (Rain)         -- site 0x100db4ee',
+    0x95: 'read of 0x15 (Changeling)   -- site 0x100db565',
+}
+
+# Never observed as a read, anywhere. DO NOT SWEEP.
 DO_NOT_SWEEP = {
-    0x85: 'the write 0x05 exists, but 0x85 never answered in a capture',
+    0x85: 'the write 0x05 exists, but 0x85 never answered nor appeared in the DLL',
     0x88: 'the abandoned repo calls it "LED Effect Database"; does not exist in v2.04',
-    0x8B: 'cited in the app timing, never seen on the wire',
     0x8D: 'predicted by the bit-7 rule, never observed',
-    0x92: 'cited in the app timing, never seen on the wire',
-    0x96: 'predicted by the bit-7 rule, never observed -- a suspect range',
+    0x96: 'PRIME SUSPECT for the bootloader: it would be the read of 0x16, the '
+          'command that opens the session. The confirmed read space ends at 0x95.',
 }
 EP_IN = 0x83
 
 
-def snap(kb, path, label):
+def snap(kb, path, label, include_binary=False):
+    targets = dict(READS)
+    if include_binary:
+        targets.update(READS_BINARY)
+        print('  (including the 3 confirmed only in the binary)')
     out = {'label': label, 'data': {}}
-    for cmd in sorted(READS):
+    for cmd in sorted(targets):
         for ch in (0, 1, 2, 3):
             try:
                 d = kb.query(cmd, channel=ch, wait=0.05)
@@ -60,7 +76,7 @@ def snap(kb, path, label):
                 out['data']['%02x/%d' % (cmd, ch)] = 'ERROR: %s' % e
                 continue
             out['data']['%02x/%d' % (cmd, ch)] = list(d)
-        print('  0x%02X read (%s)' % (cmd, READS[cmd]))
+        print('  0x%02X read (%s)' % (cmd, targets[cmd]))
     json.dump(out, open(path, 'w'))
     print('snapshot "%s" saved to %s' % (label, path))
 
@@ -108,7 +124,9 @@ if __name__ == '__main__':
     kb = KB()
     try:
         if c == 'snap':
-            snap(kb, sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else sys.argv[2])
+            args = [a for a in sys.argv[2:] if not a.startswith('--')]
+            snap(kb, args[0], args[1] if len(args) > 1 else args[0],
+                 '--binary' in sys.argv)
         elif c == 'listen':
             listen(kb, int(sys.argv[2]) if len(sys.argv) > 2 else 15)
         else:

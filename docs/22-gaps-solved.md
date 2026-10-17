@@ -190,16 +190,34 @@ touched during the captures.
 
 ---
 
-## 3. `0x08` is bigger than documented  [C]
+## 3. `0x08`: the 69 bytes are right, but there are blocks after them  [C]
 
-§7.3 describes `0x08` as "69 bytes of data (8–76) = 3 channels × 23 steps".
-Across the 37 `0x08` packets captured, **bytes well past 76 vary**:
+> **A correction to an earlier version of this section**, which said `0x08` "is
+> bigger than documented". That came from looking at the **variance** across
+> the 37 packets, not at a whole packet. Looking at a complete packet, the
+> description in §7.3 is right.
 
-    8-84   97-100   105-116   137-149   152   176   200
+The gradient block is exactly as documented. A real `0x08`, cut into lines of
+23 from byte 8 on, aligns by itself:
 
-The last three are 24 apart from each other. The 69-byte description covers
-the first block and not the rest: **`0x08` has more structure, not yet
-mapped**  [?]
+     8: fc fc fc fc e0 e0 e0 e0 e0 e0 e0 c4 c4 c4 c4 60 60 .. .. 7c 7c 7c 7c   <- R
+    31: fc fc fc fc 80 80 80 80 80 80 80 .. .. .. .. .. .. .. .. 7c 7c 7c 7c   <- G
+    54: fc fc fc fc 84 84 84 84 84 84 84 08 08 08 08 84 84 fc fc fc fc fc fc   <- B
+    77: (zero to the end)
+
+**3 channels × 23 steps, planar, bytes 8–76.** Confirmed.
+
+What the variance showed is something else: **31 of the 37 packets stop at byte
+76, and 6 carry on.** Of those six:
+
+- one (`04-effects` f2057) carries a **second 69-byte block at 77–145**, with
+  the same cyclic shape as the first
+- five carry only three `fc` bytes, at **152, 176 and 200** — 24 apart
+
+So `0x08` has **more than one block**, and not every block is a 23-step
+gradient: the one based at 150 has a stride of 24. How many blocks there are
+and what selects the format is still `[?]` — but the gradient block is not
+wrong.
 
 ---
 
@@ -224,8 +242,27 @@ not reconcile into a single layout. `0xfc` is again the maximum value of the
 6-bit quantization. The three bases are probably the **three effect slots per
 mode**, the same ones as sub-pages `02`/`05`/`08` of `0x0A`.  [I]
 
-These two commands do **not** come out of `FUN_100d7170` — the function that
-builds them has yet to be found.
+### The function has been located  [C]
+
+Neither of the two comes out of `FUN_100d7170`. They come out of
+**`FUN_100d5060`** (6,911 bytes), which writes the command byte at:
+
+    0x100d5983   mov byte [esp+0x73b8d], 0x0f
+    0x100d5c69   mov byte [esp+0x73b8d], 0x0e
+
+The same `buf[1]`, the same function — and **`FUN_100d5060` also builds
+`0x08`** (site at `0x100d6ace`). That ties the three together: `0x08`, `0x0E`
+and `0x0F` are the same generator, which explains why their shape in the
+capture looks alike, and why the extra blocks of `0x08` (§3) have the same
+step of 24 as the `0x0E` records.
+
+Neither of them calls `SetFeature` there — the packet is built and sent along
+another path, which is why they do not show up in the sweep of send sites.
+
+**What is missing:** the function is 6,911 bytes across 5 non-contiguous
+stretches; decompiling all of it is the next step, and an expensive one. It is
+worth doing with a target: only the stretch that picks the base (8, 79 or 150)
+and the one that fills the record.
 
 ---
 
@@ -242,10 +279,47 @@ give the exact number:
     100d9b41  100da945  100db092  100db523  100db59a  100db621  100dbabb
     100dbbc3  100dbc82
 
-**23 calls.** The 37 `push 0x108` include the `GetFeature` ones and other uses
-of the size, so there were never 37 send sites. Six calls are still not
-attributed to a command: `100d1d80`, `100d6b06`, `100d7776`, `100db523`,
-`100db59a`, `100db621`.
+**23 calls.** The 37 `push 0x108` include the `GetFeature`s and other uses of
+the size, so there were never 37 send sites.
+
+---
+
+## 5b. Three missing read commands — and one never seen before  [C]
+
+Three of the unattributed calls are all in **`FUN_100db460`** (the function the
+8-byte header came from, §2 of the specification). Extracting its immediates:
+
+    0x100db4e6   mov byte [esp+0x320], 0x07      <- buf[0], Report ID
+    0x100db4ee   mov byte [esp+0x321], 0x92      <- buf[1]   -> send at db523
+    0x100db4fd   mov byte [esp+0x323], 0x00      <- buf[3]
+    0x100db565   mov byte [esp+0x321], 0x95      <- buf[1]   -> send at db59a
+    0x100db5e4   mov byte [esp+0x320], 0x07
+    0x100db5ec   mov byte [esp+0x321], 0x8b      <- buf[1]   -> send at db621
+
+| Read | Matching write | Previous state |
+|---|---|---|
+| `0x8B` | `0x0B` (Ripple / Sonic) | "cited in the timing, never seen on the wire" |
+| `0x92` | `0x12` (Rain) | same |
+| **`0x95`** | `0x15` (Changeling) | **did not exist in any document** |
+
+They are exactly the reads of the three commands whose per-key payload was
+solved in §1 — which **confirms the bit-7 rule for three more pairs** and takes
+the confirmed set from 6 to 9.
+
+None of them appears in the captures because `FUN_100db460` does not run on the
+paths that were exercised. **They are confirmed in the binary, not on the wire**
+— lower confidence than the four that answer in a capture, and that is why they
+sit in `tools/km780_probe.py` in a separate list, not on the default path.
+
+### `0x96` and the bootloader  [I]
+
+With `0x95` being a valid read, the next byte is `0x96` — and `0x96` would be
+the read of `0x16`, the command that **opens the session**, the init's first
+message. `0x96` is one of the bytes the old sweep probed.
+
+There is no proving which byte it was, but the upper limit of the read space
+landing at `0x95` and the sweep starting to fail at `0x96` is too consistent to
+ignore. **Treat `0x96` as the prime suspect** and do not probe it.
 
 ---
 
