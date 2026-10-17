@@ -255,17 +255,17 @@ fn main() -> eframe::Result<()> {
 
     // The window **does not scroll**: it is born the size of its content.
     //
-    // The width comes out of the layout itself -- the keyboard drawing in the
-    // manufacturer's pixels, times the scale, plus the side panel. The height
-    // is the side panel's, which is taller than the keyboard. Since there is
-    // no scrolling, the minimum is the same as the default: shrinking would
-    // only crop.
+    // The width comes from the layout itself -- the keyboard drawing in
+    // manufacturer pixels, times the scale, plus the side panel. The height is
+    // the side panel's, which is taller than the keyboard. Since there is no
+    // scrolling, the minimum is the same as the default: shrinking would only
+    // clip.
     let (_, _, w, _) = layout::extent();
     let width = w * app::SCALE + app::PANEL_WIDTH + 30.0;
-    // Height: the top bar, the drawn keyboard, the bottom columns and the
-    // apply bar. With room to spare for the function section, which grows when
-    // a key is selected.
-    let height = 560.0;
+    // Height: the top bar, the drawn keyboard, the bottom columns and the apply
+    // bar. With room to spare for the function section, which grows when a key
+    // is selected.
+    let height = 620.0;
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
             // app_id becomes WM_CLASS on X11, which is how i3 identifies the

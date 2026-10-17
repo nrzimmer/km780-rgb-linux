@@ -78,6 +78,12 @@ pub struct App {
     /// The color's hex as editable text. Kept apart from `color` so the user
     /// can type partially without the color jumping at every keystroke.
     color_hex: String,
+    /// The function code typed in hex, for what is not in the catalog.
+    function_hex: String,
+    /// Source key of the "copy from".
+    copy_source: String,
+    /// Index of the range chosen in the first function combo box.
+    function_group: usize,
     /// Function code chosen in the remap UI. F13 by default: it is the start of
     /// the free-key space (`docs/28`).
     function: u8,
@@ -122,6 +128,11 @@ impl App {
             selection: HashSet::new(),
             color: [255, 0, 0],
             color_hex: "FF0000".into(),
+            function_hex: "68".into(),
+            copy_source: String::new(),
+            // 1 = "Free keys": it is the range `docs/28` recommends, and the one
+            // the user wants in 9 cases out of 10.
+            function_group: 1,
             function: 0x68,
             profile_name: String::new(),
             status: String::new(),
@@ -719,12 +730,45 @@ impl App {
         }
 
         ui.horizontal(|ui| {
-            egui::ComboBox::from_id_salt("function")
-                .selected_text(assign::name(self.function))
-                .width(90.0)
+            // Range and then item, instead of a flat list. The function byte
+            // addresses far more than free keys (`docs/09` §5.2), and the
+            // keyboard range alone has 106 entries -- in a single list the
+            // popup ends up bigger than the window, and no amount of scrolling
+            // saves that.
+            let groups = assign::GROUPS;
+            egui::ComboBox::from_id_salt("function_group")
+                .selected_text(groups[self.function_group].0)
+                .width(92.0)
                 .show_ui(ui, |ui| {
-                    for c in assign::free_codes() {
-                        ui.selectable_value(&mut self.function, c, assign::name(c));
+                    for (i, (name, _)) in groups.iter().enumerate() {
+                        if ui
+                            .selectable_label(self.function_group == i, *name)
+                            .clicked()
+                        {
+                            self.function_group = i;
+                            // Switching range already selects its first item,
+                            // so the combo box next to it never shows something
+                            // that does not belong to the displayed range.
+                            if let Some(first) = groups[i].1.first() {
+                                self.function = first.code;
+                                self.function_hex = format!("{:02X}", first.code);
+                            }
+                        }
+                    }
+                });
+            egui::ComboBox::from_id_salt("function_item")
+                .selected_text(assign::name(self.function))
+                .width(128.0)
+                .height(240.0)
+                .show_ui(ui, |ui| {
+                    for it in groups[self.function_group].1.iter() {
+                        if ui
+                            .selectable_label(self.function == it.code, it.name)
+                            .clicked()
+                        {
+                            self.function = it.code;
+                            self.function_hex = format!("{:02X}", it.code);
+                        }
                     }
                 });
             if ui
@@ -733,14 +777,59 @@ impl App {
                 .clicked()
             {
                 let f = self.function;
-                for &slot in sel {
-                    self.buffer.info[OFF_FUNCTIONS + slot] = f;
+                self.assign_to(sel, f);
+            }
+        });
+
+        ui.horizontal(|ui| {
+            // Any byte outside the catalog -- macro, text, or what has not been
+            // named yet. No safety net: whoever types hex here knows what they
+            // are doing, and the range shows up alongside to check against.
+            ui.label("hex");
+            let resp = ui.add(
+                egui::TextEdit::singleline(&mut self.function_hex)
+                    .desired_width(42.0)
+                    .hint_text("68"),
+            );
+            if resp.changed() {
+                if let Ok(v) = u8::from_str_radix(self.function_hex.trim(), 16) {
+                    self.function = v;
                 }
-                self.status = format!(
-                    "{} key(s) set to {} in the buffer",
-                    sel.len(),
-                    assign::name(f)
-                );
+            }
+            ui.small(assign::range_name(self.function));
+        });
+
+        ui.horizontal(|ui| {
+            // "Copy from another key": takes the function the source key has
+            // **now, in the buffer** -- not its factory HID. If the source has
+            // already been remapped, it is the remapped value that travels,
+            // which is what "copy this key" means.
+            ui.label("copy from");
+            let mut source = self.copy_source.clone();
+            egui::ComboBox::from_id_salt("copy_source")
+                .selected_text(if source.is_empty() { "\u{2014}" } else { &source })
+                .width(96.0)
+                .show_ui(ui, |ui| {
+                    for t in layout::KEYS {
+                        ui.selectable_value(
+                            &mut source,
+                            t.name.to_string(),
+                            slots::display_name(t.name),
+                        );
+                    }
+                });
+            if source != self.copy_source {
+                self.copy_source = source;
+            }
+            let from = slots::slot_of(&self.copy_source);
+            if ui
+                .add_enabled(from.is_some() && !busy, egui::Button::new("Copy"))
+                .clicked()
+            {
+                let v = self.buffer.info[OFF_FUNCTIONS + from.unwrap()];
+                self.function = v;
+                self.function_hex = format!("{v:02X}");
+                self.assign_to(sel, v);
             }
         });
 
@@ -774,6 +863,18 @@ impl App {
                 )
             };
         }
+    }
+
+    /// Puts a function code on the selected keys, **in the buffer**.
+    fn assign_to(&mut self, sel: &[usize], code: u8) {
+        for &slot in sel {
+            self.buffer.info[OFF_FUNCTIONS + slot] = code;
+        }
+        self.status = format!(
+            "{} key(s) set to {} in the buffer",
+            sel.len(),
+            assign::name(code)
+        );
     }
 
     /// Profiles in a file of ours -- item 4 of `docs/29`.

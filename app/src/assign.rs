@@ -33,23 +33,133 @@ pub fn range_name(cod: u8) -> &'static str {
     }
 }
 
+/// An assignable function: code and name for the screen.
+pub struct Function {
+    pub code: u8,
+    pub name: &'static str,
+}
+
+const fn f(code: u8, name: &'static str) -> Function {
+    Function { code, name }
+}
+
+/// The ranges offered, in the order they appear in the combo box.
+///
+/// Macro (`0xB4`) and Text (`0xB8`) are **not** here, each for a different
+/// reason. A macro needs content, which lives in `0x05` and in `0x0A` page
+/// `0x09`, and the app does not manage either yet -- assigning `B4` would
+/// point at a slot nobody maintains. Text never works without G.SKILL's app
+/// running: the content does not reach the keyboard, only the name
+/// (`docs/17` §5). Anyone who knows what they are doing reaches both through
+/// the hex field.
+pub static GROUPS: &[(&str, &[Function])] = &[
+    ("Off", &[f(0x00, "No function")]),
+    ("Free keys", F13_F24),
+    ("Keyboard", KEYBOARD),
+    ("Multimedia", MULTIMEDIA),
+    ("Mouse", MOUSE),
+    ("Windows", SHORTCUTS),
+];
+
+/// `0x68`-`0x73`. They exist in HID, Linux maps them to `KEY_F13`..`KEY_F24`
+/// and no software uses them out of the box -- the natural "free key" space
+/// (`docs/28`).
+static F13_F24: &[Function] = &[
+    f(0x68, "F13"), f(0x69, "F14"), f(0x6A, "F15"), f(0x6B, "F16"),
+    f(0x6C, "F17"), f(0x6D, "F18"), f(0x6E, "F19"), f(0x6F, "F20"),
+    f(0x70, "F21"), f(0x71, "F22"), f(0x72, "F23"), f(0x73, "F24"),
+];
+
+/// HID usage of each key, from the factory table in `docs/10`.
+///
+/// Assigning one of these makes the key **act as another** -- CapsLock
+/// becoming Esc, for example. Generated from the same table `docs/protocol.html`
+/// publishes, filtered to the real keyboard ranges (`0x04`-`0x65` and the
+/// modifiers `0xE0`-`0xE7`); the high codes of the special keys are not HID
+/// and stay out.
+static KEYBOARD: &[Function] = &[
+    f(0x04, "A"), f(0x05, "B"), f(0x06, "C"), f(0x07, "D"),
+    f(0x08, "E"), f(0x09, "F"), f(0x0A, "G"), f(0x0B, "H"),
+    f(0x0C, "I"), f(0x0D, "J"), f(0x0E, "K"), f(0x0F, "L"),
+    f(0x10, "M"), f(0x11, "N"), f(0x12, "O"), f(0x13, "P"),
+    f(0x14, "Q"), f(0x15, "R"), f(0x16, "S"), f(0x17, "T"),
+    f(0x18, "U"), f(0x19, "V"), f(0x1A, "W"), f(0x1B, "X"),
+    f(0x1C, "Y"), f(0x1D, "Z"), f(0x1E, "1"), f(0x1F, "2"),
+    f(0x20, "3"), f(0x21, "4"), f(0x22, "5"), f(0x23, "6"),
+    f(0x24, "7"), f(0x25, "8"), f(0x26, "9"), f(0x27, "0"),
+    f(0x28, "Enter"), f(0x29, "Esc"), f(0x2A, "Backspace"), f(0x2B, "Tab"),
+    f(0x2C, "Space"), f(0x2D, "-"), f(0x2E, "="), f(0x2F, "["),
+    f(0x30, "]"), f(0x31, "\\"), f(0x32, "VK22"), f(0x33, ";"),
+    f(0x34, "'"), f(0x35, "`"), f(0x36, ","), f(0x37, "."),
+    f(0x38, "/"), f(0x39, "CapsLock"), f(0x3A, "F1"), f(0x3B, "F2"),
+    f(0x3C, "F3"), f(0x3D, "F4"), f(0x3E, "F5"), f(0x3F, "F6"),
+    f(0x40, "F7"), f(0x41, "F8"), f(0x42, "F9"), f(0x43, "F10"),
+    f(0x44, "F11"), f(0x45, "F12"), f(0x46, "PrtSc"), f(0x47, "ScrLk"),
+    f(0x48, "Pause"), f(0x49, "Insert"), f(0x4A, "Home"), f(0x4B, "PgUp"),
+    f(0x4C, "Delete"), f(0x4D, "End"), f(0x4E, "PgDn"), f(0x4F, "Right"),
+    f(0x50, "Left"), f(0x51, "Down"), f(0x52, "Up"), f(0x53, "NumLock"),
+    f(0x54, "Num/"), f(0x55, "Num*"), f(0x56, "Num-"), f(0x57, "Num+"),
+    f(0x58, "NumSep"), f(0x59, "Num1"), f(0x5A, "Num2"), f(0x5B, "Num3"),
+    f(0x5C, "Num4"), f(0x5D, "Num5"), f(0x5E, "Num6"), f(0x5F, "Num7"),
+    f(0x60, "Num8"), f(0x61, "Num9"), f(0x62, "Num0"), f(0x63, "Num."),
+    f(0x64, "|"), f(0x65, "Menu"), f(0xE0, "LCtrl"), f(0xE1, "LShift"),
+    f(0xE2, "LAlt"), f(0xE3, "LWin"), f(0xE4, "RCtrl"), f(0xE5, "RShift"),
+    f(0xE6, "RAlt"), f(0xE7, "RWin"),
+];
+
+/// `docs/17` §3. The first five match what the factory table already carries
+/// on the physical media keys -- an independent check.
+static MULTIMEDIA: &[Function] = &[
+    f(0xA5, "Stop"),
+    f(0xA6, "Previous track"),
+    f(0xA7, "Play / Pause"),
+    f(0xA8, "Next track"),
+    f(0xA9, "Mute"),
+    f(0xAA, "Volume down"),
+    f(0xAB, "Volume up"),
+];
+
+/// `docs/17` §2. The code order is by category, not the UI list's order.
+static MOUSE: &[Function] = &[
+    f(0xCE, "Left click"),
+    f(0xCF, "Right click"),
+    f(0xD0, "Scroll click"),
+    f(0xD1, "Scroll down"),
+    f(0xD2, "Scroll up"),
+    f(0xD3, "Backward"),
+    f(0xD4, "Forward"),
+    f(0xD5, "Double click"),
+];
+
+/// `docs/17` §4. **It is not contiguous**: there is a hole at `C3` and `C4`,
+/// found by walking all seven in capture 08.
+static SHORTCUTS: &[Function] = &[
+    f(0xC0, "Launch Task Manager"),
+    f(0xC1, "Open Start menu"),
+    f(0xC2, "Show desktop"),
+    f(0xC5, "Close active window"),
+    f(0xC6, "Cut"),
+    f(0xC7, "Copy"),
+    f(0xC8, "Paste"),
+];
+
+/// Known name of a code, from any range.
+pub fn code_name(code: u8) -> Option<&'static str> {
+    GROUPS
+        .iter()
+        .flat_map(|(_, fs)| fs.iter())
+        .find(|f| f.code == code)
+        .map(|f| f.name)
+}
+
 /// Readable name of a code, when there is one.
 pub fn name(cod: u8) -> String {
-    if (0x68..=0x73).contains(&cod) {
-        format!("F{}", 13 + (cod - 0x68))
-    } else {
-        format!("0x{cod:02X}")
+    match code_name(cod) {
+        Some(n) => n.to_string(),
+        None => format!("0x{cod:02X}"),
     }
 }
 
-/// `F13`..`F24` = `0x68`..`0x73`.
-///
-/// They are the good choice for a "free key": they exist in HID, Linux maps
-/// them to `KEY_F13`..`KEY_F24`, and no software uses them out of the box
-/// (`docs/28`).
-pub fn free_codes() -> impl Iterator<Item = u8> {
-    0x68u8..=0x73
-}
 
 /// Slots whose function differs between two mode payloads.
 ///

@@ -189,6 +189,40 @@ undo when the same remapping was reapplied does not come back by this path. Ther
 test for it. With no log, the restore button **refuses** instead of
 guessing.
 
+### What can be assigned  [C]
+
+The combo offers the ranges from `docs/09` §5.2, in two steps -- range, then
+item --, because the keyboard one alone has 106 entries and in a single list the popup
+ends up bigger than the window:
+
+| Range | What it is |
+|---|---|
+| Off | `0x00`, no function |
+| Free keys | `0x68`-`0x73` = F13..F24, the free key space from `docs/28` |
+| Keyboard | each key's HID usage -- makes the key **act as another one** |
+| Multimedia | `0xA5`-`0xAB`, do `docs/17` §3 |
+| Mouse | `0xCE`-`0xD5`, do `docs/17` §2 |
+| Windows | `0xC0`-`0xC8`, with the `C3`/`C4` hole from `docs/17` §4 |
+
+The Keyboard table is **generated** from the same slot list that
+`docs/protocol.html` publishes, filtered down to real keyboard HID
+(`0x04`-`0x65` and the modifiers `0xE0`-`0xE7`); the high codes of the special
+keys are not HID and are left out.
+
+**Macro (`0xB4`) and Text (`0xB8`) are not in the combo**, each for a different
+reason. The macro needs content, which lives in the `0x05` and in the `0x0A` page
+`0x09`, and the app manages neither -- assigning `B4` would point at a slot
+nobody maintains. Text **never** works without G.SKILL's app running:
+the content does not reach the keyboard, only the name. A hex field beside it reaches
+both, and any other byte, for whoever knows what they are doing; the range the
+code belongs to appears next to it as you type.
+
+### "Copy from": copying another key's function
+
+Picking a source key copies the function it has **now, in the
+buffer** -- not its factory HID. If the source was already remapped, it is the
+remapped value that travels, which is what "copy this key" means.
+
 ### The GUI and the CLI go through the same function, on purpose
 
 Validating `--function` on the wire would prove nothing about the window's `Apply` if
