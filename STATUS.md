@@ -58,13 +58,28 @@ Start by reading `docs/30`.
 In order of size. Nothing here is blocked by missing reverse engineering — what
 is missing is code, except where marked.
 
-**Macros — nothing done.** This is the biggest block. The protocol is
-documented (`0x05` = content, 3-byte records `[flag][delay ×10 ms][HID
-usage]`, with an extended field in the flag's nibble for delays up to ~41 s;
-the name goes to the `0x0A` base, page `0x09`; the key receives the code
-`0xB4`). The app does not write, edit, assign or list any macro. Recording
-with the MR key happens inside the keyboard and needs no host — but editing
-what was recorded does.
+**Macros — recording, editing and writing are done; the key binding is
+missing.** The app records a macro through the window, edits it event by
+event, saves it to `~/.config/km780/macros/`, reads what is on the keyboard
+(`0x85`) and writes it (`0x05`). From the CLI: `--macro-dump`,
+`--macro-import`, `--macro-list`, `--macro-write NAME [mode]`,
+`--macro-erase MODE`.
+
+What is missing is **which macro `0xB4` runs**. The key receives `0xB4` and the
+binding to the index has been `[I]` since the capture (`docs/16` §3). Solving
+it means pressing the key and seeing what comes out — the one part of the
+project that cannot be automated. The function combo box already offers `0xB4`
+with the warning on screen.
+
+Protocol gaps closed along the way, all measured on 2026-10-17 and detailed in
+`docs/09` §7b: `0x85` reads a macro (which had never been read here), a virgin
+bank answers `0xFF`, an immediate re-read after the write returns the old
+content, and **all three banks are mandatory** — with one or two the keyboard
+ACKs and does not store, the third packet closes the write the way the third
+channel of `0x09` does. The `0x0D` frame is not part of this.
+
+It also became known that the macros from the Windows captures **were still on
+the keyboard**, in modes 1 and 2 — an independent validation of the decoder.
 
 **Editing effects — only the on/off is done.** Today the app changes byte 10 and
 that is it; the animation comes out with whatever is already stored. Missing:

@@ -71,6 +71,12 @@ FASE 2 -- andamento
   DONE    each effect stores its own duration
   MISSING per-key data of the effects (0x0B, 0x0E, 0x0F, 0x12, 0x15):
           the UI only applies a global effect, so it cannot be exercised through it
+  DONE    0x85 = read a macro; a virgin bank replies 0xFF; a re-read right
+          after the write returns the old content (docs/09 7b)
+  DONE    0x05 only stores with all THREE banks. One or two: an ACK and nothing. The
+          third packet closes the write, like the 3rd channel of the 0x09. The
+          0x0D frame is not part of it. Measured in mode 3.
+  MISSING which macro the 0xB4 runs -- it needs the key pressed to see
   MISSING LED Sleep
   MISSING byte 108 vs byte 119: they are two toggles, which is which is still to be said
   NEVER   Text: the content never goes to the keyboard, only the name.

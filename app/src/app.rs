@@ -14,7 +14,9 @@ use egui::{Color32, Pos2, Rect, Sense, Stroke, Vec2};
 use crate::assign::{self, OFF_FUNCTIONS};
 use crate::effects;
 use crate::layout;
+use crate::macros::{self, Macro};
 use crate::profiles;
+use crate::recorder::Recorder;
 use crate::proto::{self, Channels, Keyboard};
 use crate::slots::{self, NSLOTS};
 
@@ -89,6 +91,16 @@ pub struct App {
     function: u8,
     /// Name typed in the profiles box.
     profile_name: String,
+    /// The recording in progress, if any.
+    recorder: Recorder,
+    /// The macro being edited. It stays **outside** `buffer`: `Apply` is about
+    /// the mode (color, brightness, effect, key function), and a macro goes by
+    /// another command (`0x05`), to another address, with no
+    /// read-change-write. Putting the two in the same pending counter would
+    /// make `Apply` promise a write it does not do.
+    macro_edit: Macro,
+    /// Name chosen in the saved-macros combo box.
+    macro_pick: String,
     status: String,
     error: Option<String>,
     /// The USB operation in flight, if any. Only one at a time: they all come
@@ -105,6 +117,17 @@ enum Reply {
         mode: u8,
         info: Vec<u8>,
         colors: Channels,
+    },
+    MacroRead {
+        device: String,
+        mode: u8,
+        found: Option<Macro>,
+    },
+    MacroWritten {
+        device: String,
+        mode: u8,
+        events: usize,
+        identical: bool,
     },
     Written {
         device: String,
@@ -135,6 +158,9 @@ impl App {
             function_group: 1,
             function: 0x68,
             profile_name: String::new(),
+            recorder: Recorder::default(),
+            macro_edit: Macro::named(""),
+            macro_pick: String::new(),
             status: String::new(),
             error: None,
             pending: None,
@@ -215,6 +241,33 @@ impl App {
                 self.buffer = self.stored.clone();
                 self.selection.clear();
                 self.status = format!("read from mode {mode}");
+            }
+            Reply::MacroRead { device, mode, found } => {
+                self.device = Some(device);
+                match found {
+                    None => {
+                        self.status =
+                            format!("mode {mode} bank 1 is empty \u{2014} nothing recorded there");
+                    }
+                    Some(m) => {
+                        let n = m.events.len();
+                        self.macro_edit = Macro {
+                            name: std::mem::take(&mut self.macro_edit.name),
+                            ..m
+                        };
+                        self.status = format!("{n} event(s) read from mode {mode} bank 1");
+                    }
+                }
+            }
+            Reply::MacroWritten { device, mode, events, identical } => {
+                self.device = Some(device);
+                self.status = if identical {
+                    format!("{events} event(s) written to mode {mode} bank 1 and read back identical")
+                } else {
+                    format!(
+                        "{events} event(s) written to mode {mode}, but the read back differs"
+                    )
+                };
             }
             Reply::Written {
                 device,
@@ -546,14 +599,13 @@ impl eframe::App for App {
 
         egui::CentralPanel::default().show(ui, |ui| {
             self.draw_keyboard(ui);
-            ui.add_space(8.0);
             ui.small(
-                "Click to select. Ctrl or Shift adds. Dragging over keys adds too.",
+                "Click to select. Ctrl or Shift adds. Dragging over keys adds too. \
+                 Some LEDs on this unit have the red component stuck: check colors by \
+                 reading them back, not by eye.",
             );
-            ui.small(
-                "Some LEDs on this unit have the red component stuck: check \
-                 colors by reading them back, not by eye.",
-            );
+            ui.separator();
+            self.macro_controls(ui, busy);
         });
     }
 }
@@ -577,6 +629,7 @@ static PALETTE: [[u8; 3]; 8] = [
 const WARN: Color32 = Color32::from_rgb(220, 180, 80);
 const ERROR: Color32 = Color32::from_rgb(230, 100, 100);
 const PENDENTE: Color32 = Color32::from_rgb(240, 200, 100);
+const RECORDING: Color32 = Color32::from_rgb(170, 40, 40);
 
 impl App {
     /// The right-hand panel: just one, and always about what is selected.
@@ -798,6 +851,17 @@ impl App {
             }
             ui.small(assign::range_name(self.function));
         });
+
+        // 0xB4 is the only function that depends on something else being
+        // stored on the keyboard, and which macro it runs is not measured.
+        // Saying so here is more honest than letting the key go mute with no
+        // explanation.
+        if self.function == 0xB4 {
+            ui.colored_label(
+                WARN,
+                "macro: write one below first \u{2014} which macro this runs is not                  confirmed, the app writes index 0",
+            );
+        }
 
         ui.horizontal(|ui| {
             // "Copy from another key": takes the function the source key has
@@ -1042,6 +1106,273 @@ impl App {
         }
         for slot in drags {
             self.selection.insert(slot);
+        }
+    }
+}
+
+impl App {
+    /// The macro section, below the keyboard.
+    ///
+    /// It is here, and not in the inspector, for two reasons. The inspector
+    /// always speaks about the **selection**, and a macro is no key's property
+    /// -- it is a loose object that can be assigned later. And the event list
+    /// is wide: in the 270 px panel every row would wrap.
+    ///
+    /// The Apply in the bottom bar does **not** write macros. Here the write
+    /// has its own button, because the path is another command (`0x05`), to
+    /// another address, and it is not read-change-write: the packet is the
+    /// whole macro. Promising in Apply a write it does not do would be worse
+    /// than having two buttons.
+    fn macro_controls(&mut self, ui: &mut egui::Ui, busy: bool) {
+        // While recording, the keyboard belongs to the macro: egui must not use
+        // Tab to move the focus nor Space to press a button, and nothing may
+        // land in the name box.
+        if self.recorder.active {
+            self.recorder.collect(ui);
+            ui.ctx().memory_mut(|m| m.stop_text_input());
+            ui.ctx().input_mut(|i| i.events.clear());
+            ui.ctx().request_repaint();
+            self.macro_edit.events = self.recorder.events();
+            if self.recorder.full() {
+                self.recorder.stop();
+            }
+        }
+
+        ui.horizontal(|ui| {
+            ui.heading("Macro");
+            ui.add_enabled(
+                !self.recorder.active,
+                egui::TextEdit::singleline(&mut self.macro_edit.name)
+                    .hint_text("name")
+                    .desired_width(110.0),
+            );
+
+            if self.recorder.active {
+                // Red is the only place in the app where the color means "this
+                // is happening right now", and that is deliberate: while
+                // recording, every key the user presses enters the list.
+                if ui
+                    .add(egui::Button::new(
+                        egui::RichText::new("\u{25a0} Stop").color(Color32::WHITE),
+                    ).fill(RECORDING))
+                    .clicked()
+                {
+                    self.recorder.stop();
+                    self.status = format!("recorded {} event(s)", self.macro_edit.events.len());
+                }
+            } else if ui
+                .add_enabled(!busy, egui::Button::new("\u{25cf} Record"))
+                .on_hover_text(
+                    "records the keys you press in this window, with the pauses \
+                     between them; the window must stay focused",
+                )
+                .clicked()
+            {
+                let now = ui.input(|i| i.time);
+                self.recorder.start(now);
+                self.macro_edit.events.clear();
+                self.status = "recording \u{2014} press Stop when done".into();
+            }
+
+            if ui
+                .add_enabled(
+                    !self.macro_edit.events.is_empty() && !self.recorder.active,
+                    egui::Button::new("Clear"),
+                )
+                .clicked()
+            {
+                self.macro_edit.events.clear();
+            }
+
+            ui.separator();
+
+            // File. Loading and saving do not touch the keyboard -- a macro
+            // lives in a file of ours, like a profile.
+            let saved = macros::list();
+            egui::ComboBox::from_id_salt("macro_pick")
+                .selected_text(if self.macro_pick.is_empty() {
+                    "saved\u{2026}".to_string()
+                } else {
+                    self.macro_pick.clone()
+                })
+                .show_ui(ui, |ui| {
+                    for name in &saved {
+                        ui.selectable_value(&mut self.macro_pick, name.clone(), name);
+                    }
+                });
+            if ui
+                .add_enabled(!self.macro_pick.is_empty() && !self.recorder.active, egui::Button::new("Load"))
+                .clicked()
+            {
+                match macros::load(&self.macro_pick.clone()) {
+                    Ok(m) => {
+                        self.status = format!("{} event(s) loaded", m.events.len());
+                        self.macro_edit = m;
+                        self.error = None;
+                    }
+                    Err(e) => self.error = Some(e),
+                }
+            }
+            if ui
+                .add_enabled(
+                    !self.macro_edit.name.trim().is_empty() && !self.recorder.active,
+                    egui::Button::new("Save"),
+                )
+                .clicked()
+            {
+                match macros::save(&self.macro_edit) {
+                    Ok(path) => {
+                        self.macro_pick = self.macro_edit.name.trim().to_string();
+                        self.status = format!("saved to {path}");
+                        self.error = None;
+                    }
+                    Err(e) => self.error = Some(e),
+                }
+            }
+
+            ui.separator();
+
+            // Keyboard. Both buttons state the full address, because there are
+            // three modes and three banks and "write the macro" would not say
+            // where.
+            let mode = self.mode;
+            if ui
+                .add_enabled(!busy && !self.recorder.active, egui::Button::new("Read from keyboard"))
+                .on_hover_text(
+                    "reads bank 1 of the active mode with 0x85 \u{2014} including a macro \
+                     recorded on the keyboard itself with the MR key",
+                )
+                .clicked()
+            {
+                self.task(move |kb| {
+                    let payload = kb.read_macro(mode, 0, 1)?;
+                    Ok(Reply::MacroRead {
+                        device: kb.description.clone(),
+                        mode,
+                        found: if macros::absent(&payload) {
+                            None
+                        } else {
+                            let m = macros::decode(&payload);
+                            if m.events.is_empty() { None } else { Some(m) }
+                        },
+                    })
+                });
+            }
+            let can_write = !busy
+                && !self.recorder.active
+                && !self.macro_edit.events.is_empty()
+                && self.macro_edit.stuck_keys().is_empty();
+            if ui
+                .add_enabled(can_write, egui::Button::new(format!("Write to M{mode}")))
+                .on_hover_text("writes bank 1 of the active mode with 0x05 and reads it back")
+                .clicked()
+            {
+                let m = self.macro_edit.clone();
+                match macros::encode(&m) {
+                    Err(e) => self.error = Some(e),
+                    Ok(payload) => self.task(move |kb| {
+                        kb.write_macro(mode, 0, &payload)?;
+                        // An immediate re-read returns the old content --
+                        // measured on the wire. The wait is part of the check.
+                        std::thread::sleep(std::time::Duration::from_millis(500));
+                        let back = macros::decode(&kb.read_macro(mode, 0, 1)?);
+                        Ok(Reply::MacroWritten {
+                            device: kb.description.clone(),
+                            mode,
+                            events: m.events.len(),
+                            identical: back.events == m.events,
+                        })
+                    }),
+                }
+            }
+        });
+
+        // The warnings. The stuck-key one blocks the write on purpose: a macro
+        // that presses Ctrl and never releases it leaves Ctrl stuck in the
+        // system, and the symptom -- everything stops responding -- does not
+        // point at the macro.
+        let stuck = self.macro_edit.stuck_keys();
+        if !stuck.is_empty() {
+            ui.colored_label(
+                ERROR,
+                format!(
+                    "never released: {} \u{2014} this would leave the key held down \
+                     in the system, so writing is blocked",
+                    stuck.iter().map(|&u| assign::name(u)).collect::<Vec<_>>().join(", ")
+                ),
+            );
+        }
+        if self.recorder.full() {
+            ui.colored_label(
+                WARN,
+                format!("{} events is all that fits in one packet", macros::MAX_EVENTS),
+            );
+        }
+
+        if self.macro_edit.events.is_empty() {
+            ui.small(
+                "Record keys in this window, or read what is already on the keyboard. \
+                 Nothing is written until you press Write.",
+            );
+            return;
+        }
+
+        ui.horizontal(|ui| {
+            ui.label(format!(
+                "{} event(s), {:.2}s total",
+                self.macro_edit.events.len(),
+                self.macro_edit.duration()
+            ));
+            ui.small("the delay of each event is the pause BEFORE it");
+        });
+
+        // The list scrolls inside itself and takes whatever is left below the
+        // keyboard. The window does not scroll -- it is born the size of its
+        // content -- so a list of up to 84 events has to have its own
+        // scrolling; and a fixed height would waste the space the rest does not use.
+        let mut remove: Option<usize> = None;
+        egui::ScrollArea::vertical()
+            .max_height((ui.available_height() - 6.0).max(72.0))
+            .auto_shrink([false, true])
+            .show(ui, |ui| {
+                for i in 0..self.macro_edit.events.len() {
+                    ui.horizontal(|ui| {
+                        let e = self.macro_edit.events[i];
+                        ui.monospace(format!("{i:2}"));
+                        ui.colored_label(
+                            if e.press { Color32::LIGHT_GREEN } else { Color32::GRAY },
+                            if e.press { "press  " } else { "release" },
+                        );
+                        // The delay is editable in seconds, which is how the
+                        // user thinks; the field on the wire is in units of
+                        // 10 ms, and the conversion lives here.
+                        let mut secs = e.seconds();
+                        if ui
+                            .add_enabled(
+                                !self.recorder.active,
+                                egui::DragValue::new(&mut secs)
+                                    .speed(0.01)
+                                    .range(0.0..=(macros::MAX_DELAY as f32 / 100.0))
+                                    .suffix(" s"),
+                            )
+                            .changed()
+                        {
+                            self.macro_edit.events[i].delay =
+                                (secs * 100.0).round().clamp(0.0, macros::MAX_DELAY as f32) as u16;
+                        }
+                        ui.monospace(e.key_name());
+                        if ui
+                            .add_enabled(!self.recorder.active, egui::Button::new("\u{2715}").small())
+                            .on_hover_text("remove this event")
+                            .clicked()
+                        {
+                            remove = Some(i);
+                        }
+                    });
+                }
+            });
+        if let Some(i) = remove {
+            self.macro_edit.events.remove(i);
         }
     }
 }

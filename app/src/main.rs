@@ -10,8 +10,10 @@ mod app;
 mod assign;
 mod effects;
 mod layout;
+mod macros;
 mod profiles;
 mod proto;
+mod recorder;
 mod slots;
 
 /// `km780 --probe`: opens the keyboard and reads, with no GUI and writing
@@ -219,6 +221,190 @@ fn function(arg: &str) {
     );
 }
 
+/// `km780 --macro-dump`: reads the macro banks of the three modes with `0x85`
+/// and shows what it decoded. **Read only**, nothing is written.
+///
+/// It serves two purposes. The first is seeing whether there is a macro
+/// recorded with the MR key -- that recording happens inside the keyboard,
+/// with no host, and has never been read by this project. The second is
+/// finding out what `0x85` returns: the command shows up in the init and in
+/// the decompilation, but the capture never showed a macro being **read**,
+/// only written. Whatever comes out of here is a new measurement.
+fn macro_dump() {
+    let kb = proto::Keyboard::open_device().expect("could not open");
+    println!("opened: {}\n", kb.description);
+    for mode in 1..=3u8 {
+        for bank in proto::MACRO_BANKS {
+            match kb.read_macro(mode, 0, bank) {
+                Err(e) => println!("mode {mode} bank {bank}: {e}"),
+                Ok(payload) if macros::absent(&payload) => {
+                    println!("mode {mode} bank {bank}: absent (0xFF) \u{2014} never written");
+                }
+                Ok(payload) => {
+                    let m = macros::decode(&payload);
+                    let used = payload.iter().filter(|&&b| b != 0).count();
+                    println!(
+                        "mode {mode} bank {bank}: header {:02X} {:02X}, \
+                         {} event(s), {} non-zero byte(s)",
+                        m.header[0], m.header[1], m.events.len(), used
+                    );
+                    for (i, e) in m.events.iter().enumerate() {
+                        println!(
+                            "   {i:2}  {}  {:>7.2}s  {}",
+                            if e.press { "press  " } else { "release" },
+                            e.seconds(),
+                            e.key_name()
+                        );
+                    }
+                    // The first raw bytes too, because the header is `[I]` and
+                    // a field I do not understand should not appear only
+                    // decoded.
+                    let head: Vec<String> =
+                        payload[..16].iter().map(|b| format!("{b:02x}")).collect();
+                    println!("       raw: {}", head.join(" "));
+                }
+            }
+        }
+    }
+}
+
+/// `km780 --macro-import`: saves to file every macro the keyboard has.
+///
+/// The name comes from the address (`kb-m2-b1`), because the keyboard does
+/// **not** store the name alongside: the name lives in database `0x0A` page
+/// `0x09`, by another path (`docs/16` §2). Inventing a pretty name here would
+/// hide that.
+fn macro_import() {
+    let kb = proto::Keyboard::open_device().expect("could not open");
+    let mut saved = 0;
+    for mode in 1..=3u8 {
+        for bank in proto::MACRO_BANKS {
+            let Ok(payload) = kb.read_macro(mode, 0, bank) else { continue };
+            if macros::absent(&payload) {
+                continue;
+            }
+            let mut m = macros::decode(&payload);
+            if m.events.is_empty() {
+                continue;
+            }
+            m.name = format!("kb-m{mode}-b{bank}");
+            match macros::save(&m) {
+                Ok(path) => {
+                    println!("{} event(s) -> {path}", m.events.len());
+                    saved += 1;
+                }
+                Err(e) => println!("mode {mode} bank {bank}: {e}"),
+            }
+        }
+    }
+    println!("{saved} macro(s) imported from the keyboard");
+}
+
+/// `km780 --macro-erase MODE`: returns a mode's macro banks to the
+/// virgin default.
+fn macro_erase(mode: u8) {
+    assert!((1..=3).contains(&mode), "mode has to be 1, 2 or 3");
+    let kb = proto::Keyboard::open_device().expect("could not open");
+    kb.erase_macro(mode, 0).expect("0x05");
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    for bank in proto::MACRO_BANKS {
+        let state = match kb.read_macro(mode, 0, bank) {
+            Err(e) => e,
+            Ok(p) if macros::absent(&p) => "absent".into(),
+            Ok(p) => format!("{} event(s) still there", macros::decode(&p).events.len()),
+        };
+        println!("mode {mode} bank {bank}: {state}");
+    }
+}
+
+/// `km780 --macro-list`: the macros saved in files, without touching the keyboard.
+fn macro_list() {
+    let names = macros::list();
+    if names.is_empty() {
+        println!("no macro saved in {}", macros::path());
+        return;
+    }
+    for name in names {
+        match macros::load(&name) {
+            Err(e) => println!("{name}: {e}"),
+            Ok(m) => {
+                let stuck = m.stuck_keys();
+                println!(
+                    "{name}: {} event(s), {:.2}s{}",
+                    m.events.len(),
+                    m.duration(),
+                    if stuck.is_empty() {
+                        String::new()
+                    } else {
+                        format!(
+                            "   WARNING: key(s) never released: {}",
+                            stuck.iter().map(|&u| assign::name(u)).collect::<Vec<_>>().join(", ")
+                        )
+                    }
+                );
+                for (i, e) in m.events.iter().enumerate() {
+                    println!(
+                        "   {i:2}  {}  {:>7.2}s  {}",
+                        if e.press { "press  " } else { "release" },
+                        e.seconds(),
+                        e.key_name()
+                    );
+                }
+            }
+        }
+    }
+}
+
+/// `km780 --macro-write NAME`: writes the saved macro into bank 1 of the
+/// active mode and **re-reads with 0x85 to check**.
+///
+/// Checking by re-read is the same zeal as `--paint`: without it, "it worked"
+/// only means the write did not error.
+///
+/// This does **not** assign the macro to any key. The code `0xB4` is the link,
+/// and which macro it runs is `[I]` (`docs/16` §3) -- assigning it here would
+/// be pretending the link is measured.
+fn macro_write(name: &str, target: Option<u8>) {
+    let m = macros::load(name).expect("could not load the macro");
+    let payload = macros::encode(&m).expect("could not encode");
+    let stuck = m.stuck_keys();
+    if !stuck.is_empty() {
+        println!(
+            "WARNING: this macro never releases {} -- it will leave the key \
+             held down in the system",
+            stuck.iter().map(|&u| assign::name(u)).collect::<Vec<_>>().join(", ")
+        );
+    }
+
+    let kb = proto::Keyboard::open_device().expect("could not open");
+    let mode = match target {
+        Some(m) => {
+            assert!((1..=3).contains(&m), "mode has to be 1, 2 or 3");
+            m
+        }
+        None => kb.active_mode().expect("0x81"),
+    };
+    println!("mode {mode}: writing {} event(s) to bank 1", m.events.len());
+    // The official app's whole sequence: frame opened, the three banks,
+    // frame closed. Banks 2 and 3 go out zeroed, as in the capture.
+    kb.write_macro(mode, 0, &payload).expect("0x05");
+
+    // An immediate re-read returns the old content -- measured. Waiting is part
+    // of the check, not ceremony.
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    match kb.read_macro(mode, 0, 1) {
+        Err(e) => println!("could not read back: {e}"),
+        Ok(back) => {
+            let d = macros::decode(&back);
+            println!(
+                "read back: {} event(s){}",
+                d.events.len(),
+                if d.events == m.events { "  (identical)" } else { "  DIFFERENT" }
+            );
+        }
+    }
+}
+
 fn main() -> eframe::Result<()> {
     let argv: Vec<String> = std::env::args().collect();
     if let Some(p) = argv.iter().position(|a| a == "--brightness") {
@@ -246,6 +432,27 @@ fn main() -> eframe::Result<()> {
         let _kb = proto::Keyboard::open_device().expect("could not open");
         println!("holding for 8s");
         std::thread::sleep(std::time::Duration::from_secs(8));
+        return Ok(());
+    }
+    if let Some(p) = argv.iter().position(|a| a == "--macro-write") {
+        let target = argv.get(p + 2).and_then(|a| a.parse::<u8>().ok());
+        macro_write(&argv[p + 1], target);
+        return Ok(());
+    }
+    if let Some(p) = argv.iter().position(|a| a == "--macro-erase") {
+        macro_erase(argv[p + 1].parse().expect("mode 1, 2 or 3"));
+        return Ok(());
+    }
+    if std::env::args().any(|a| a == "--macro-import") {
+        macro_import();
+        return Ok(());
+    }
+    if std::env::args().any(|a| a == "--macro-dump") {
+        macro_dump();
+        return Ok(());
+    }
+    if std::env::args().any(|a| a == "--macro-list") {
+        macro_list();
         return Ok(());
     }
     if std::env::args().any(|a| a == "--probe") {

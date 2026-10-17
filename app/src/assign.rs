@@ -45,13 +45,16 @@ const fn f(code: u8, name: &'static str) -> Function {
 
 /// The ranges offered, in the order they appear in the combo box.
 ///
-/// Macro (`0xB4`) and Text (`0xB8`) are **not** here, each for a different
-/// reason. A macro needs content, which lives in `0x05` and in `0x0A` page
-/// `0x09`, and the app does not manage either yet -- assigning `B4` would
-/// point at a slot nobody maintains. Text never works without G.SKILL's app
-/// running: the content does not reach the keyboard, only the name
-/// (`docs/17` §5). Anyone who knows what they are doing reaches both through
+/// Text (`0xB8`) is **not** here: it never works without G.SKILL's app
+/// running, because the content never reaches the keyboard, only the name
+/// (`docs/17` §5). Anyone who knows what they are doing can reach it through
 /// the hex field.
+///
+/// Macro (`0xB4`) is here now that the app writes macros to the keyboard.
+/// With one caveat the UI states out loud: **which** macro `0xB4` runs is not
+/// measured. The hypothesis is the index in the `0x05` header (`docs/16` §3),
+/// and until someone presses the key to see, it is a hypothesis. The app
+/// always writes to index 0, so the bet is that the key runs that one.
 pub static GROUPS: &[(&str, &[Function])] = &[
     ("Off", &[f(0x00, "No function")]),
     ("Free keys", F13_F24),
@@ -59,7 +62,13 @@ pub static GROUPS: &[(&str, &[Function])] = &[
     ("Multimedia", MULTIMEDIA),
     ("Mouse", MOUSE),
     ("Windows", SHORTCUTS),
+    ("Macro", MACRO),
 ];
+
+/// `0xB4` (`docs/16` §3). A single entry: the code does not say which macro,
+/// and inventing "Macro 1", "Macro 2" would suggest an index the byte does
+/// not have.
+static MACRO: &[Function] = &[f(0xB4, "Run the macro on the keyboard")];
 
 /// `0x68`-`0x73`. They exist in HID, Linux maps them to `KEY_F13`..`KEY_F24`
 /// and no software uses them out of the box -- the natural "free key" space

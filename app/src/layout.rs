@@ -198,6 +198,25 @@ mod tests {
         }
     }
 
+    /// Two different names must not land on the same slot.
+    ///
+    /// A duplicate name is already caught by the test above; a duplicate
+    /// **slot** is another bug, and it is the one that matters on screen:
+    /// `draw_keyboard` takes the widget id from the slot, so two keys on the
+    /// same slot collide by id and egui paints "First/Second use of widget ID"
+    /// over the drawing.
+    #[test]
+    fn no_two_keys_share_a_slot() {
+        let mut seen: Vec<(usize, &str)> = Vec::new();
+        for t in KEYS {
+            let Some(slot) = slots::slot_of(t.name) else { continue };
+            if let Some((_, other)) = seen.iter().find(|(s, _)| *s == slot) {
+                panic!("{:?} and {:?} are both slot {slot}", other, t.name);
+            }
+            seen.push((slot, t.name));
+        }
+    }
+
     /// 122 physical keys, which is what docs/25 counted in the electrical
     /// matrix. If this test fails, the layout and the matrix disagree and one
     /// of the two is wrong.

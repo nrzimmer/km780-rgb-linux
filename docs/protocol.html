@@ -1081,6 +1081,45 @@ Ctrl+C: events and delays match one for one what the app shows on screen.
 function is a type of key assignment, a separate path. The macro's <b>name</b>
 goes by another path: <code>0x0A</code> page <code>0x09</code>, in
 ASCII.</p>
+
+<h3>All three banks are mandatory <span class="conf c-c">C</span></h3>
+<p>Measured on hardware on 2026-10-17. Writing only bank 1 <b>does not
+store</b>: the keyboard answers ACK and the re-read returns the previous
+content. With two, the same. With all three, it stores.</p>
+<div class="tscroll">
+<table>
+<thead><tr><th>Banks sent</th><th>Result</th></tr></thead>
+<tbody>
+<tr><td class="m">1</td><td>does not take</td></tr>
+<tr><td class="m">1, 2</td><td>does not take</td></tr>
+<tr><td class="m">1, 2, 3</td><td><b>pega</b></td></tr>
+</tbody>
+</table>
+</div>
+<p>Each attempt used a different macro, on mode 3. It is the same shape as
+<code>0x09</code>: there is no commit command, the <b>third packet closes
+the write</b>. The <code>0x0D</code> frame the official app wraps around its
+writes is <b>not</b> part of it — with it and without it the result is the
+same at both ends of the matrix.</p>
+
+<h3><code>0x85</code> · reading the macro <span class="conf c-c">C</span></h3>
+<p>It had never appeared in a capture: the official app was only ever seen
+<b>writing</b> macros. The command is in the confirmed read space and
+appears in the init and in the decompilation. Measured on 2026-10-17:</p>
+<p style="font-family:var(--mono);font-size:.85rem">07 85 &lt;mode&gt;
+&lt;index&gt; &lt;bank&gt; 00 00 00</p>
+<p>Two things came out of it. <b>The macros from the Windows captures are still
+in the keyboard</b>: mode 1 bank 1 returned the macro with the 8.65 s pause and
+mode 2 bank 1 the <code>A B C</code>, byte for byte — an independent validation
+of the decoder, months after the capture. And <b>a never-written bank answers
+<code>0xFF</code></b>, the same convention as <code>0x8A</code> in the init;
+<code>0xFF</code> means "there is nothing here" and is different from zeroed, which is an
+empty macro.</p>
+<p>Two details for anyone implementing this: the answer comes back <b>one byte
+short</b> (263 of 264), so testing "all 256 are <code>0xFF</code>"
+is never true — the header (<code>FF FF</code> against <code>00 01</code>)
+is the test that works; and an <b>immediate re-read after a write returns
+the old content</b>, half a second later it returns the new one.</p>
 </div>
 
 <h3><code>0x0A</code> · the page-indexed database</h3>
@@ -1229,8 +1268,8 @@ const CMD = {
   0x0A:["w","base"],   0x0B:["w","ripple/sonic"], 0x0D:["w","config"],
   0x0E:["w","changel."],0x0F:["w","rain"],     0x12:["w","rain px"],
   0x15:["w","changel."],0x16:["w","open"],
-  0x81:["r","mode"],   0x82:["r","mode info"], 0x89:["r","LED matrix"],
-  0x8A:["r","base"],
+  0x81:["r","mode"],   0x82:["r","mode info"], 0x85:["r","macro"],
+  0x89:["r","LED matrix"], 0x8A:["r","base"],
   // confirmed in the binary (FUN_100db460), never seen on the wire
   0x8B:["rb","read 0x0B"], 0x92:["rb","read 0x12"], 0x95:["rb","read 0x15"]
 };

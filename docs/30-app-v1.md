@@ -370,3 +370,99 @@ collections, and whether Windows lets the collection be opened with read access.
 `proto::usage_page_hint` already prefers the usage page `0xFF01` collection, and
 `Keyboard::open` tries each candidate with the harmless `0x81` read before
 accepting it -- but that is design, not measurement.
+
+## Macros  [C]
+
+Record, edit, save, read from the keyboard and write to the keyboard. What is
+**not** done is the link to the key -- see the end of this section.
+
+### Recording happens in the window, not by listening to the system
+
+`tools/listen_x11.py` listens to the whole keyboard, from any window. That is
+right for measuring the keyboard and wrong for recording a macro: it would pick up what the
+user types elsewhere, and it only exists on Linux with X11. Through `egui`'s
+events the recording is the same on Windows, which is the stated target.
+
+The price is that the window has to be focused, and that keys `egui` itself
+consumes -- Tab moves the focus, Space presses a button -- have to be taken away
+from it while recording. `macro_controls` clears the event queue and releases
+the text focus on every recording frame.
+
+Three things only showed up when recording was tested on the real screen:
+
+1. **The `C` of Ctrl+C disappeared.** `egui` turns Ctrl+C, Ctrl+X and Ctrl+V
+   into `Event::Copy`/`Cut`/`Paste` **before** delivering them, and none of
+   those is a key event. The macro came out with the Ctrl and without the
+   letter.
+2. **A release of `LWin` appeared that nobody pressed.** The `Modifiers::command`
+   field is an alias of `ctrl` on Linux and Windows; only on macOS does it mean
+   Super. Using it for Super generated a phantom on every Ctrl that came up. The
+   honest consequence: **the Win key is not recordable** -- `egui` delivers it
+   neither as an event nor as a field.
+3. **Shift+Z recorded the Shift coming up before the Z went down**, which would
+   type a lowercase `z` on playback. The modifiers were being synchronized by
+   the state at the **end of the frame**; each event carries the modifiers **of
+   that has to go.
+
+After those three, a Ctrl+C recorded here comes out in the same shape the
+official app sent on the wire in `docs/21` §2: press Ctrl, press C, release C,
+Ctrl.
+
+### The delay is stored in units of 10 ms
+
+Which is the wire's unit. Storing it in milliseconds would force rounding on
+recording and again on writing, and two roundings over the same number do not
+commute: a macro recorded, saved and reloaded could drift on its own. The screen
+converts to seconds only for display and editing.
+
+### What the screen refuses
+
+A macro with a key **never released** is not written, and the button is disabled
+with the reason beside it. A macro that presses Ctrl and never releases it
+leaves Ctrl stuck **in the system**, and the symptom -- everything stops
+responding -- does not point at the macro. Of the limits, the 84 events is the
+divided by 3.
+
+### `Apply` does not write macros, and that is deliberate
+
+A macro goes by another command (`0x05`), to another address, and is **not**
+read-change-write: the packet is the entire content. Putting the two in the same
+pending counter would make `Apply` promise a write it does not do. That is why
+the macro section has its own button, which states the full address
+(`Write to M2`), and not a generic "Apply".
+
+### What was measured on the keyboard because of this
+
+It is in `docs/09` §7b in detail; in short: `0x85` reads a macro (it had never
+been read in this project), a virgin bank answers `0xFF`, an immediate re-read
+after a write returns the old content, and **all three banks are mandatory** --
+with one or two the keyboard ACKs and does not store. The third packet closes
+the write, just like the third channel of `0x09`.
+
+And the macros from the Windows captures **were still in the keyboard**: mode 1
+returned the 8.65 s pause one from `docs/21`, mode 2 the `A B C` from `docs/16`.
+`--macro-import` brought them to a file before any write test, and the tests
+were all on mode 3, which was virgin and was returned to `0xFF` at the end with
+`--macro-erase`.
+
+### What is missing, and why it cannot be done alone
+
+**Which macro the `0xB4` runs.** The key receives `0xB4` (`docs/16` §3) and the
+link to the index is `[I]` since the capture. Settling it calls for **pressing the
+key** and seeing what comes out -- and pressing a key is the one part of this project
+that cannot be automated. The catalog already offers the `0xB4`, with the on-screen
+warning that the index is not confirmed and that the app always writes to 0.
+
+## A bug the macro section found in the rest of the app
+
+`slots::slot_of` accepts a name **or a number**, and used to try the number
+first. So the ten keys of the number row could not find themselves: `"1"` landed
+on slot 1, which is **G2**. On screen that showed up as a widget id collision --
+`egui` painting "First/Second use of widget ID" over the drawing --, and in the
+CLI it was worse and silent: `--paint 1 ff0000` lit up G2.
+
+Now the name comes first and a raw number only counts for what is not a key
+name; `#N` forces the number. Two tests hold it: one says the number row finds
+itself, another that the slots with no key are still reachable by number. And a
+third, in `layout.rs`, fails if two keys in the drawing land on the same slot --
+which is the shape the bug had on screen.

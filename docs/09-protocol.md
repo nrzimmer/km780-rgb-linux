@@ -198,7 +198,7 @@ by `mov byte [buf+1], <cmd>`, in the four addressing forms MSVC emitted
 |---|---|---|---|
 | `0x01` | `0x81` | Current Profile | `0x100d1cb5` `0x100d1e0f` / `0x100d9014` |
 | `0x02` | `0x82` | Profile Information | `0x100d4ebd` / `0x100d90f5` |
-| `0x05` | `0x85` | — | `0x100d7d14` `0x100d500b` / `0x100d9b05` `0x100da909` |
+| `0x05` | `0x85` | **macro content** — §7b | `0x100d7d14` `0x100d500b` / `0x100d9b05` `0x100da909` |
 | `0x09` | `0x89` | **LED Matrix Database** | **`0x100d6c12`** / `0x100db05d` |
 | `0x0A` | `0x8A` | — | `0x100dbb94` `0x100dba93` / `0x100dbc5c` |
 | `0x0D` | `0x8D`? | — | `0x100d1ecb` / not observed |
@@ -620,6 +620,62 @@ ver 5.2.
 
 ### All three banks are mandatory  [C]
 
+### All three banks are mandatory  [C]
+
+Measured on hardware on 2026-10-17, writing through the app in `app/`. Writing bank 1
+alone **does not store**: the keyboard replies ACK and the re-read returns the
+previous content. With two banks, the same. With all three, it stores.
+
+| Banks sent | Result |
+|---|---|
+| 1 | does not take |
+| 1, 2 | does not take |
+| 1, 2, 3 | **pega** |
+
+Each attempt used a different macro, in mode 3, with the check in a
+separate read — see below why the immediate one does not do.
+
+It is the same design as the `0x09`: there is no commit command, the **third
+packet closes the write** (§6.4). The `0x0D` frame the official app puts
+around its writes is **not** part of this: with it and without it the result is the
+same at both ends of the matrix.
+
+### An immediate re-read returns the old content  [C]
+
+Right after the write, the `0x85` still replies with what was there before. Half
+a second later it replies with the new. Anyone checking a write has to
+wait; without that the check reports a failure that never happened — which is
+exactly what happened here before the matrix above was run.
+
+### 7b.1 `0x85` — ler a macro  [C]
+
+It had never shown up in a capture: the official app was only ever seen **writing**
+a macro. The command is in the confirmed read space (it ends at `0x95`) and
+appears in the init and in the decompilation, so reading it is safe. Measured on
+2026-10-17:
+
+    07 85 <mode> <index> <bank> 00 00 00
+
+The reply carries the same payload as the `0x05`, from byte 8 on. Two things
+came out of it:
+
+**A never-written bank answers `0xFF`.** Mode 3, which the official app never
+touched, returned `0xFF` in all three banks — the same convention as `0x8A` in
+the init (`docs/20`). `0xFF` means "there is nothing here" and is **different
+from zeroed**, which is an empty macro. Without telling the two apart, a virgin
+bank decodes as 84 events of `0xFF` with 40.95 s of delay each.
+
+**A bank that was never written replies `0xFF`.** Mode 3, which the official app never
+touched, returned `0xFF` on all three banks — the same convention as the `0x8A` in the init
+(`docs/20`). `0xFF` means "there is nothing here" and is **different from zeroed**, which is
+an empty macro. Without telling the two apart, a virgin bank decodes as 84
+`0xFF` events with 40.95 s of delay each.
+
+An implementation detail worth recording: the reply comes back **one byte
+short** (263 of 264), so the last byte of the payload keeps whatever the
+caller had in the buffer. Testing "all 256 are `0xFF`" is never true;
+the header (`FF FF` against `00 01`) is the test that works.
+
 ---
 
 ## 7c. `0x0A` / `0x8A` — page-indexed database  [C]
@@ -712,7 +768,7 @@ ruled out in the test. It still has no known function. [?]
 | # | Item | Status |
 |---|---|---|
 | 1 | effect catalog | **solved** — the 8 from the UI, with ID and name, section 7.1 |
-| 2 | macro format (`0x05`) | **solved** — section 7b |
+| 2 | macro format (`0x05`) | **solved** — section 7b, write and read measured on hardware |
 | 3 | payload of `0x01` / `0x02` | **solved** — sections 4 and 5 |
 | 4 | `0x0A`/`0x8A` | **solved** — per-page base, section 7c |
 | 5 | key assignment table | **solved** — section 5.1 |

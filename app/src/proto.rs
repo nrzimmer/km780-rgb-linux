@@ -29,6 +29,12 @@ pub const INFO_GET: u8 = 0x82;
 pub const INFO_SET: u8 = 0x02;
 pub const LED_GET: u8 = 0x89;
 pub const LED_SET: u8 = 0x09;
+pub const MACRO_GET: u8 = 0x85;
+pub const MACRO_SET: u8 = 0x05;
+
+/// Macro banks of a mode. The official app sends all three in sequence
+/// (`buf[4]` = 1, 2, 3) and only bank 1 carried data in the capture (`docs/16` §1).
+pub const MACRO_BANKS: [u8; 3] = [1, 2, 3];
 
 // Offsets inside the mode payload (0x02/0x82), absolute within the packet.
 #[allow(dead_code)]
@@ -205,6 +211,82 @@ impl Keyboard {
         b[2] = mode;
         b[OFF_STATUS] = 0x00;
         self.write(&b, WAIT_READ)
+    }
+
+    /// Reads a macro bank: `0x85`, `buf[3]` = index, `buf[4]` = bank.
+    ///
+    /// Returns the payload from byte 8 on, which is where `macros::decode`
+    /// starts. It is a pure read -- `0x85` is inside the confirmed read space
+    /// (which ends at `0x95`) and shows up both in the init and in the
+    /// decompilation (`docs/20`, `docs/09` §3).
+    ///
+    /// The placement of `buf[3]` vs `buf[4]` comes from the write capture,
+    /// which is the only source: when recording, the app sends `buf[3]=0x00`
+    /// and varies `buf[4]`. The read mirrors that.
+    pub fn read_macro(&self, mode: u8, index: u8, bank: u8) -> Res<Vec<u8>> {
+        let d = self.read(&Self::build(MACRO_GET, mode, index, bank, 0, None), WAIT_READ)?;
+        Ok(d[HDR..].to_vec())
+    }
+
+    /// Writes a macro: `0x05` into **all three** banks, the content in bank 1
+    /// and the other two zeroed.
+    ///
+    /// **All three are mandatory, and this was measured.** Writing only bank 1,
+    /// the keyboard answers ACK and the bank keeps the previous content; with
+    /// two, same; with three, it takes. Matrix run on mode 3 of this keyboard,
+    /// with a different macro on each attempt:
+    ///
+    ///     1 bank    -> does not take
+    ///     2 banks   -> does not take
+    ///     3 banks   -> takes
+    ///
+    /// It is the same shape as `0x09`: there is no commit command, the **third
+    /// packet closes the write** (`docs/09` §6.4). The `0x0D` frame the
+    /// official app wraps around it is not part of this -- with it and without
+    /// it the result is the same, at both ends of the matrix.
+    ///
+    /// Another measured effect: an **immediate** re-read after the write still
+    /// returns the old content. Whoever checks needs to wait.
+    ///
+    /// **It is not read-change-write**, and it could not be: the packet is the
+    /// macro's entire content, there is no unknown neighbouring field to
+    /// preserve -- the zeroed tail **is** the end of the list.
+    pub fn write_macro(&self, mode: u8, index: u8, payload: &[u8]) -> Res<()> {
+        if payload.len() != PKT - HDR {
+            return Err(format!(
+                "macro payload has {} bytes, expected {}",
+                payload.len(),
+                PKT - HDR
+            ));
+        }
+        self.write_macro_bank(mode, index, 1, payload)?;
+        let empty = vec![0u8; PKT - HDR];
+        for bank in [2u8, 3] {
+            self.write_macro_bank(mode, index, bank, &empty)?;
+        }
+        Ok(())
+    }
+
+    /// Returns the three banks to the virgin default, `0xFF`.
+    ///
+    /// `0xFF` and not zeroed: it is what the firmware leaves where it never
+    /// wrote, and it is what `macros::absent` recognises as "there is no macro
+    /// here". Zeroed would be an **empty** macro, which is another thing.
+    pub fn erase_macro(&self, mode: u8, index: u8) -> Res<()> {
+        let virgin = vec![0xFFu8; PKT - HDR];
+        for bank in [1u8, 2, 3] {
+            self.write_macro_bank(mode, index, bank, &virgin)?;
+        }
+        Ok(())
+    }
+
+    /// A single bank. It exists for `write_macro`, which sends all three --
+    /// outside it, one bank alone is not a write, it is a wasted packet.
+    fn write_macro_bank(&self, mode: u8, index: u8, bank: u8, payload: &[u8]) -> Res<()> {
+        self.write(
+            &Self::build(MACRO_SET, mode, index, bank, 0, Some(payload)),
+            WAIT_READ,
+        )
     }
 
     pub fn read_colors(&self, mode: u8) -> Res<Channels> {
