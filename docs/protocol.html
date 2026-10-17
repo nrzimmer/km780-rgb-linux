@@ -627,7 +627,8 @@ exist in the protocol</b>. There are 3 modes.</p>
   <div class="fld" style="--c:var(--f-data);flex:1 1 7px"><span class="off">11</span><span class="nm">brightness</span><span class="vl">0–4</span></div>
   <div class="fld" style="--c:var(--f-data);flex:3 1 18px"><span class="off">12–14</span><span class="nm">direction</span></div>
   <div class="fld dash" style="--c:var(--f-data);flex:12 1 70px"><span class="off">15–71</span><span class="nm">4 B records · duration</span><span class="vl">inferred</span></div>
-  <div class="fld unk" style="--c:var(--f-unk);flex:8 1 60px"><span class="off">72–107</span><span class="nm">config · 75–77 = nº de paradas</span></div>
+  <div class="fld unk" style="--c:var(--f-unk);flex:8 1 60px"><span class="off">72–107</span><span class="nm">config · 75–77 = no. of stops</span></div>
+  <div class="fld unk" style="--c:var(--f-unk);flex:2 1 14px"><span class="off">107–108</span><span class="nm">inert</span></div>
   <div class="fld" style="--c:var(--f-cmd);flex:1 1 7px"><span class="off">109</span><span class="nm">Win lock</span><span class="vl">0/1</span></div>
   <div class="fld" style="--c:var(--f-data);flex:3 1 22px"><span class="off">110–118</span><span class="nm">3 RGB triples</span></div>
   <div class="fld" style="--c:var(--f-data);flex:30 1 150px"><span class="off">120–263</span><span class="nm">key assignment table · 144 slots, 1 byte each</span></div>
@@ -647,6 +648,37 @@ exist in the protocol</b>. There are 3 modes.</p>
   <span class="conf c-c">C</span>: the unknown ones travel intact through the
   round-trip. And, since the M1/M2/M3 keys switch the mode with no software,
   re-read the active mode with <code>0x81</code> instead of assuming the last value written.</p>
+</div>
+
+<h3>The three lighting toggles, and why two of them are no use</h3>
+<div class="col">
+<p>The documentation spoke of <b>two</b> toggles, 108 and 119. There are
+<b>three</b>: separating, across the 11 captures, the host's writes from the
+keyboard's answers, <b>107</b> behaves like a toggle too. And the app has
+exactly three keys, in sequence in the binary's configuration block:
+<code>LightDisable</code>, <code>BacklightDisable</code>,
+<code>LightVolumeDisable</code>. The count matches.
+<span class="conf c-c">C</span></p>
+<p><b><code>119</code> = volume display</b>, by elimination within the capture
+<code>03-config</code>, whose exercised controls were polling rate (byte 8),
+repeat delay (which goes in <code>0x0A</code>) and volume display — and 119 is
+the only toggle byte that moves there. <span class="conf c-c">C</span></p>
+</div>
+
+<div class="note">
+  <div class="hd">107 and 108 are inert</div>
+  <p>Tested on hardware, each at <code>0</code> and at <code>1</code>,
+  <b>in the static mode and in the mode with Wave running</b>, with a mode
+  switch on the keyboard itself between the steps. No change in any of the four
+  combinations: the animation did not stop, nothing went dark.</p>
+  <p>The firmware <b>accepts and stores</b> them — a re-read returns the value
+  written. It just does nothing with it. They are <b>stored state, not
+  control</b>: probably the app's configuration living in the keyboard's memory
+  so it travels with the device. It matches the original report that touching
+  those toggles had no effect <b>on Windows either</b>.
+  <span class="conf c-c">C</span></p>
+  <p>For the Linux tooling the consequence is a good one: <b>preserve them
+  through the round-trip and do not touch them</b> — which is what read-change-write already does.</p>
 </div>
 
 <h3>Byte 109: o Windows key lock</h3>
@@ -1008,7 +1040,7 @@ left, and why.</p>
 <tr><td class="m">how to close the 0x16<br>session</td><td>no observed command closes it. Today the only way is a USB reset</td></tr>
 <tr><td class="m">LED slot of each<br>special key</td><td>the groups are known from the HID usage; which slot is which key inside the group only comes out by <b>painting a slot and looking</b></td></tr>
 <tr><td>the macro's Playback Option</td><td>a dropdown of 4 options; the byte was not located. <b>Only by decompilation.</b></td></tr>
-<tr><td class="m">byte 108 vs byte 119</td><td>they are two distinct toggles (all lighting, volume display); which is which is still to be said. <b>Settleable without writing</b>: snapshot, work the control from the keyboard, diff — that is how 109 came out</td></tr>
+<tr><td class="m">which of the two inert ones<br>is LightDisable</td><td>107 and 108 do nothing, so observing does not separate them. Only by decompiling the save routine — and that gives the <b>name</b>, not the behaviour. Of no practical value</td></tr>
 <tr><td class="m">bytes 72–107</td><td>partial: 75–77 = number of color stops. Same method</td></tr>
 <tr><td class="m">the 02 04 M 04 … event</td><td>6 occurrences, meaning unknown. Listen to EP <code>0x83</code> while working the keyboard.</td></tr>
 <tr><td>LED Sleep</td><td>the control was never captured</td></tr>
