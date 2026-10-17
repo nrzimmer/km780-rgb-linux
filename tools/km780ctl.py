@@ -31,7 +31,7 @@ import km780lib as K
 # Confirmed on hardware -- docs/27 §10. 8 (Checkpoint) is reactive too.
 # 3 (Sonic) is internally called Reactive, profile .rea -- docs/27 §7.
 EFFECTS = {0: 'none (static)', 1: 'Wave', 2: 'Ripple', 3: 'Sonic',
-           4: 'Breathing', 6: 'key lights up on press (outside the official UI)',
+           4: 'Breathing', 6: 'key lights up and stays lit (outside the UI; useless)',
            7: 'Changeling', 8: 'Checkpoint (reactive)', 9: 'Cycle',
            10: 'Rain'}
 POLLING = {1: '1000 Hz', 2: '500 Hz', 4: '250 Hz', 8: '125 Hz'}

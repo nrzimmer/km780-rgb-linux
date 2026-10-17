@@ -499,7 +499,7 @@ Full detail in `15-capture-04-effects.md`.
 | `0x04` | Breathing | — |
 | `0x07` | Changeling | `0x0E` (`04 03 fc`) + `0x15` ×3 channels |
 | `0x08` | **Checkpoint** — uses "Transition Point" (number of keys) instead of duration/direction | — |
-| `0x06` | **key lights up on press** — dark at rest. Outside the official UI and with no branch in the DLL; firmware only. `docs/27` §10 | — |
+| `0x06` | **the key lights up on press and never goes out** — dark at rest, the color coming from the gradient slots. Outside the official UI and with no branch in the DLL; firmware only. Real, but useless. `docs/27` §10 | — |
 | `0x09` | Cycle | `0x0E` (zeroed) |
 | `0x0A` | Rain | `0x0F` (`03 03 fc`) + `0x12` ×3 channels |
 

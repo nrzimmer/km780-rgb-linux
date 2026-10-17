@@ -222,16 +222,43 @@ state. At rest, a reactive effect and a dead effect are indistinguishable.
 > only counts after trying to interact. Every effect test has two columns: at
 > rest and under a key.
 
-### What is left to characterize about `6`  [I]
+### `6`, characterized enough to be dropped  [C]
 
-- Observed: **the lit key did not go dark.** So it is not a momentary highlight
-  with decay; it looks cumulative — every key pressed stays lit. That brings it
-  closer to a typing "usage map" or heatmap than to a reactive fade. What
-  clears it is unknown: changing mode, the USB reset, a color write, or
-  nothing.
-- Which color it uses, and where that comes from — the `0x09` color slot, or
-  the effect slot.
-- Whether the `0x0A` duration/direction parameter affects it.
+- **It never goes out.** The key lights up when pressed and stays lit. It is not
+  a highlight with decay: it accumulates.
+- **The color is not the static color.** It comes from the color slots that form
+  the gradient, not from what `0x09` paints as a fixed color.
+- **The distribution is irregular.** Observed from left to right: `G2` through
+  `1` blue; `F1 F2 F3` red; `4 5 6 7 8 9 0` blue; `P [` red; the rest to the
+  right blue. It almost looks like a horizontal gradient by column, and it does
+  not fit: in the number row only `2` and `3` follow `F1 F2 F3`.
+- `P` and `[` may be a **defect of this unit** (see below), not of the effect.
+  `F1 F2 F3` and `1 2 3 4` were checked and **change color correctly**, so their
+  red is real behaviour of the effect.
+
+**Verdict: it exists, it does something, and it is not useful.** It is recorded
+that index 6 is a real firmware effect outside the official UI, with the
+behaviour above, and the project invests no more in it.
+
+### A caveat about this unit: LEDs with the R stuck  [C]
+
+The keyboard used in the tests has **some LEDs where the R component is always
+on** — only its brightness varies. Scope of the problem, by the operator's
+observation:
+
+- it affects **static color** and uniform fills, where a spurious red stands
+  out;
+- it does **not** affect an animated effect (Wave and the like), because it is a
+  few keys and the moving color dominates;
+- keys verified as **healthy**: `F1 F2 F3`, `1 2 3 4`.
+  Suspect: `P`, `[`.
+
+This is a defect of this unit, not of the protocol, but it goes into the
+documentation because **it contaminates evidence**: an unexpected red in a
+static-color test may be the key, not the packet. Check against the healthy
+list, or confirm the value by **re-reading the payload** with `0x89` instead of
+trusting the eye — the re-read is byte for byte and does not pass through the
+LED.
 
 ## 11. What stays open
 

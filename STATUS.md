@@ -15,7 +15,7 @@ a prior portrait.
 | | |
 |---|---|
 | Protocol specification | `docs/09-protocol.md`, canonical |
-| Visual view | `docs/protocol.html` — opens in a browser, or claude.ai/artifact/K9mu4VENac49xSE2cR3YXM |
+| Visual view | `docs/protocol.html` — opens in a browser, or claude.ai/artifact/K9mu4VENac49xSE2cR3YXM (v11, up to date with `docs/27`) |
 | Color tooling | `tools/km780ctl.py` — **exercised end to end on hardware** |
 | Hardware-free tests | `tools/test_km780.py` — 24, all passing |
 
@@ -63,9 +63,14 @@ The declared goal is met. Two directions, neither blocking the other:
 
 ## Hardware state
 
-- FW 77, `28da:1101`, needs no root (the `uaccess` ACL on the USB node)
+- FW 77, `28da:1101`, no root needed (a `uaccess` ACL on the USB node)
+- **This unit has LEDs with the R stuck** (only the brightness varies). It shows
+  in static color, not in animation; it is a few keys. Healthy ones checked:
+  `F1 F2 F3`, `1 2 3 4`; suspect: `P`, `[`. In a color test, check by
+  **re-reading the payload** (`0x89`), not by eye. See `docs/27` §10.
 - Backup of the original state in `backup-first-contact.json` (outside the index)
-- Checked at the end of the last session: payload and colors **identical** to the backup
+- Verified at the end of the last session: payload and colors **identical** to
+  the backup
 
 ## What is still missing in the protocol (nothing blocks the tooling)
 
@@ -79,7 +84,7 @@ The declared goal is met. Two directions, neither blocking the other:
 | `base+1` of the effect slot | **only through the assembly** — the caller passes 472 KB of config by value on the stack, `docs/27` §8 |
 | the 5th byte of the stop record | same |
 | ~~the effect byte 10 = 8~~ | **Checkpoint, reactive** — it was already in `docs/16` §4; hardware corroborates |
-| characterize effect **6** (outside the UI) | how long the key stays lit, which color it uses, `docs/27` §10 |
+| ~~characterizing effect **6**~~ | **done and discarded** — real, cumulative, useless. `docs/27` §10 |
 | what byte 10 = `5` is | no branch in the DLL and no reaction in the firmware  `[?]` |
 | the `02 04 M 04 …` event | 6 occurrences, no context |
 

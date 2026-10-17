@@ -826,9 +826,12 @@ modifier field.</p>
 <h2 id="effects">Animated effects</h2>
 <div class="col">
 <p>The active effect is <b>byte 10 of the mode</b>. The UI offers exactly 8
-effects, all of them mapped; the IDs <code>0x05</code> and <code>0x06</code> do
-not exist in it. Each effect <b>keeps its own duration</b>: switching
+effects, all mapped. Each effect <b>keeps its own duration</b>: switching
 effect and coming back restores the previous value.</p>
+<p>The IDs <code>0x05</code> and <code>0x06</code> do not exist in the UI <b>and
+have no branch in the DLL's builder</b> — the app cannot build a profile for
+them. But firmware 77 <b>implements <code>0x06</code></b>, tested on the
+keyboard: it is a real effect outside the official software. <span class="conf c-c">C</span></p>
 </div>
 
 <div class="tscroll">
@@ -840,6 +843,8 @@ effect and coming back restores the previous value.</p>
 <tr><td class="m">0x02</td><td>Ripple</td><td class="m">0x0B, channel in buf[4], buf[5]=0</td></tr>
 <tr><td class="m">0x03</td><td>Sonic</td><td class="m">0x0B, channel in buf[4], buf[5]=1</td></tr>
 <tr><td class="m">0x04</td><td>Breathing</td><td>—</td></tr>
+<tr><td class="m">0x05</td><td>static red, reacts to nothing. No branch in the DLL. No known function <span class="conf c-q">?</span></td><td>—</td></tr>
+<tr><td class="m">0x06</td><td><b>outside the official UI</b> — dark at rest; the pressed key lights up and <b>never goes out</b>. Color coming from the gradient slots. Real, and useless <span class="conf c-c">C</span></td><td>—</td></tr>
 <tr><td class="m">0x07</td><td>Changeling</td><td class="m">0x0E (04 03 fc) + 0x15 ×3</td></tr>
 <tr><td class="m">0x08</td><td><b>Checkpoint</b> — uses "Transition Point" (number of keys) instead of duration/direction</td><td>—</td></tr>
 <tr><td class="m">0x09</td><td>Cycle</td><td class="m">0x0E zeroed</td></tr>
@@ -860,11 +865,32 @@ an artefact.</p>
 <b>only 23 appears</b>, in a floating-point context: it is the gradient's
 interpolation. <b>24 does not exist in the function</b>, so it could not be a
 real.</p>
+<p>The function was later <b>decompiled in full</b>, and the layout deduced
+from the wire was confirmed — now with the channel bases pinned by the code, not by the
+shape of the packets. The builder settles three things the capture did not give:</p>
+<p><b>The 23 is a ceiling, not a coincidence.</b> The stop counter goes through
+<code>if (n &lt; 0x17) n++</code> — <code>0x17</code> = 23, the length of the
+channel. It is the same counter that bounds the filling loop and that is written
+at <code>+0</code>. So <b>the header's first byte is the number of
+gradient stops</b>, and the <code>03</code>/<code>04</code>/<code>06</code>
+values captured are counts. <span class="conf c-c">C</span></p>
+<p><b>The effect color is quantized.</b> Each stop comes out of
+<code>((comp × pct) / 100 &gt;&gt; 2) × 4</code>: scaled by a percentage and
+rounded to a multiple of 4. Hence the ubiquitous <code>fc</code> —
+252 is 255 at 100% — and the effect path <b>never reaches
+<code>ff</code></b>, by construction. That is 6 effective bits per channel.
+<span class="conf c-c">C</span></p>
+<p><b>The envelope, from a third source.</b> The final stretch writes
+<code>7</code>, then <code>0x0e</code> or <code>0x0f</code>, then
+<code>&lt;mode&gt; + 1</code> into contiguous stack bytes — Report ID, command
+and 1-based mode. And it calls <code>Sleep(500)</code> after writing an effect.
+<span class="conf c-c">C</span></p>
 </div>
 
 <div class="scroll">
 <div class="ruler" style="min-width:700px">
-  <div class="fld" style="--c:var(--f-cmd);flex:2 1 40px"><span class="off">+0 +1</span><span class="nm">header</span><span class="vl">duration, direction?</span></div>
+  <div class="fld" style="--c:var(--f-cmd);flex:1 1 20px"><span class="off">+0</span><span class="nm">no. of stops</span><span class="vl">max 23</span></div>
+  <div class="fld" style="--c:var(--f-mode);flex:1 1 20px"><span class="off">+1</span><span class="nm">scalar</span><span class="vl">?</span></div>
   <div class="fld" style="--c:#c0392b;flex:23 1 120px"><span class="off">+2 … +24</span><span class="nm">channel R, 23 steps</span></div>
   <div class="fld" style="--c:#1f8b4c;flex:23 1 120px"><span class="off">+25 … +47</span><span class="nm">channel G, 23 steps</span></div>
   <div class="fld" style="--c:#2d5ca8;flex:23 1 120px"><span class="off">+48 … +70</span><span class="nm">channel B, 23 steps</span></div>
@@ -887,6 +913,19 @@ anywhere. Five out of five packets decode that way.
 same function builds all three — and not of
 <code>0x0B</code>/<code>0x12</code>/<code>0x15</code>, which come out of
 <code>FUN_100d7170</code> and are these:</p>
+</div>
+
+<div class="col">
+<p><b>Which effects have per-key data, and a confirmed prediction.</b> After
+building the gradient, the caller only enters the
+<code>FUN_100d7170</code> loop if the effect is <code>2</code>, <code>3</code>,
+<code>10</code> or <code>7</code> — and the loop runs <b>3 times</b>. Against
+the helper table above, built from the capture and with no relation to
+this code: Ripple and Sonic with <code>0x0B</code> ×3, Changeling
+<code>0x15</code> ×3, Rain <code>0x12</code> ×3, and nothing for Wave,
+Breathing and Cycle. <b>Seven out of seven, including the three negatives</b> —
+and the "×3" is the loop's count, not a coincidence with the R/G/B channels.
+<span class="conf c-c">C</span></p>
 </div>
 
 <h3>The 144 per-key bytes of <code>0x0B</code>, <code>0x12</code> and <code>0x15</code></h3>
@@ -963,7 +1002,8 @@ mirror. Values in raw bytes, as they go out on the wire.</p>
 them carries a second 69-byte block at 77–145, with the same cyclic shape. The
 other five carry only three <code>fc</code> bytes, at 152, 176 and 200 — 24
 apart, which is the stride of <code>0x0E</code>'s records, not the gradient's
-gradient. How many blocks there are, and what selects each one's format,
+23. (The <code>fc</code> is 255 quantized to a multiple of 4, by the builder's
+arithmetic; the effect path never writes <code>ff</code>.) How many blocks there are, and what selects each one's format,
 is still open. <span class="conf c-q">?</span></p>
 </div>
 
@@ -1085,7 +1125,8 @@ left, and why.</p>
 <thead><tr><th>Item</th><th>Why it is still open</th></tr></thead>
 <tbody>
 <tr><td class="m">one anomalous 0x08</td><td>one packet of the 37 (<code>04-effects</code> f2057) has its first block zeroed and a gradient starting at byte 77, which aligns with neither 69 nor 71</td></tr>
-<tr><td class="m">header of the 0x0E / 0x0F<br>slots</td><td>the 2 bytes look like duration and direction, by position and by range, but they were not exercised <span class="conf c-i">I</span></td></tr>
+<tr><td class="m">+1 of the header<br>of 0x0E / 0x0F</td><td>the <code>+0</code> came out: it is the <b>number of stops</b>, capped at 23 by the builder. The <code>+1</code> is a single scalar, and pinning down its origin <b>requires assembly</b> — the caller passes <b>472 KB of configuration by value on the stack</b>, so the pseudocode loses the signature <span class="conf c-i">I</span></td></tr>
+<tr><td class="m">what byte 10 = 0x05 does</td><td>static red, reacts to nothing, not even a key. No branch in the DLL. It may be an invalid index treated as "light everything up" <span class="conf c-q">?</span></td></tr>
 <tr><td class="m">the role of 0x07</td><td>the only command on the wire with no build site located. It was the prime suspect for turning <code>f6</code> on and <b>was ruled out in the test</b> — what turns it on is <code>0x16</code>. It still has no known function.</td></tr>
 <tr><td class="m">how to close the 0x16<br>session</td><td>no observed command closes it. Today the only way is a USB reset</td></tr>
 <tr><td class="m">multimedia codes<br>aa and ab</td><td>two of the seven in the range are left over, and Volume Up and Volume Down are left over in the app — they are the wheel, which has neither a key nor a slot <span class="conf c-i">I</span></td></tr>
