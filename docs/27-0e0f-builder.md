@@ -177,30 +177,61 @@ This predicts which effects fire three helper packets. Against the table in
 **Seven out of seven, including the three negatives.** And the "x3" is not a
 coincidence with the R/G/B channels: it is the loop's count.
 
-## 10. Checkpoint on the hardware, and how idling deceives  [C]
+## 10. Hardware: index 6 exists, and it is reactive  [C]
 
-Test with `tools/km780effect.py`, mode 2, brightness 4.
+Test with `tools/km780effect.py`, mode 2, brightness 4. The second column is
+what was missing in the first round: **pressing a key**.
 
-| byte 10 | idle | pressing a key |
-|---|---|---|
-| `1` (Wave) | animates | control: animated normally |
-| `8` (Checkpoint) | all red | **changes with the key pressed** |
-| `5` | all red | not tested under a key |
-| `6` | dark | not tested under a key |
+| byte 10 | at rest | pressing a key | verdict |
+|---|---|---|---|
+| `1` Wave | animates | — | the control, animated normally |
+| `5` | all red | nothing changes | static red, no reaction |
+| `6` | **dark** | **the pressed key lights up** | **a live reactive effect** |
+| `8` Checkpoint | all red | changes with the key | reactive, already known |
 
-Checkpoint is reactive: "all red" is its **idle state**. This **corroborates,
-by an independent path**, what `docs/16` §4 extracted from the official UI —
-that its parameter is "Transition Point, in number of keys pressed". The UI
-said the effect counts keys; the hardware shows the effect reacting to keys.
+### `6` is an effect the official app cannot configure  [C]
 
-Wave on the same mode rules out the hypothesis that mode 2's zeroed effect
-slots were getting in the way. So `5` stays `[?]`: it was judged **while
-idle**, where it looked the same as `8` — and `8` while idle also looks inert.
-**Idling does not distinguish a reactive effect from a dead one.** Re-examine
-`5` and `6` while pressing a key.
+`docs/16` §4 left `0x05` and `0x06` as `[?]`, with the note that "the UI only
+offers 8 effects". Now we know more: firmware 77 **implements** `6`, with
+behaviour of its own and distinct from all the others — the matrix dark at
+rest, and the pressed key lighting up. And §7 shows that `FUN_100d5060` has
+**no branch** for index 6: the app builds no profile for it, it has no file
+extension, it does not appear in the UI's list.
 
-Worth keeping as a rule: on a keyboard with reactive effects, "nothing
-happened" only counts after trying to interact.
+It is a keyboard feature with no support in the official software. For us it is
+free: it is a byte in a payload we already know how to read and rewrite.
+
+`5` is the opposite case — no branch in the DLL **and** no distinct behaviour in
+the firmware. Static red that reacts to nothing. It still has no known function;
+it may be an invalid index the firmware treats as "light everything up".  [I]
+
+### Checkpoint, and why the first round fooled me
+
+Checkpoint reacts to keys, and the "all red" is its **resting state**. That
+corroborates by an independent route what `docs/16` §4 extracted from the
+official UI — that its parameter is "Transition Point, in number of keys
+pressed". The UI said the effect counts keys; the hardware shows the effect
+reacting to keys.
+
+In the first round I judged `5`, `6` and `8` **by their resting state**, and got
+all three wrong: I wrote `8` off as probably dead because it looked the same as
+`5`, and called `6` "dark" without realising that dark *was* an effect's resting
+state. At rest, a reactive effect and a dead effect are indistinguishable.
+
+> **A rule of method.** On a keyboard with reactive effects, "nothing happened"
+> only counts after trying to interact. Every effect test has two columns: at
+> rest and under a key.
+
+### What is left to characterize about `6`  [I]
+
+- Observed: **the lit key did not go dark.** So it is not a momentary highlight
+  with decay; it looks cumulative — every key pressed stays lit. That brings it
+  closer to a typing "usage map" or heatmap than to a reactive fade. What
+  clears it is unknown: changing mode, the USB reset, a color write, or
+  nothing.
+- Which color it uses, and where that comes from — the `0x09` color slot, or
+  the effect slot.
+- Whether the `0x0A` duration/direction parameter affects it.
 
 ## 11. What stays open
 

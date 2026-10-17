@@ -166,13 +166,21 @@ def main():
     ok(sim.modes[2][K.OFF_BRIGHTNESS] == 3, 'mode 2 (the active one) stayed intact')
 
     print('\n--- limits refused ---')
-    for argv in (['brightness', '5'], ['effect', '6'], ['set', 'F5']):
+    # 5 is the only effect index with no known function: no branch in the DLL
+    # and no reaction in the firmware. 6 was refused here until the hardware
+    # showed it exists -- see docs/27 §10.
+    for argv in (['brightness', '5'], ['effect', '5'], ['set', 'F5']):
         sim = Simulator()
         try:
             run(sim, argv)
             ok(False, '%s should have been refused' % ' '.join(argv))
         except SystemExit:
             ok(True, '%s refused' % ' '.join(argv))
+
+    print('\n--- effect 6 accepted: it exists in firmware, outside the UI ---')
+    sim = Simulator()
+    run(sim, ['effect', '6'])
+    ok(sim.modes[2][K.OFF_EFFECT] == 6, 'effect 6 reached byte 10')
 
     print('\n%d test(s) failed' % len(failures) if failures else '\nALL OK')
     return 1 if failures else 0

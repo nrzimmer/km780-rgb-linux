@@ -101,7 +101,13 @@ It was the missing ID. With it the catalog is complete:
 | `0x09` | Cycle |
 | `0x0A` | Rain |
 
-`0x05` and `0x06` are missing — the UI only offers 8 effects. [?]
+`0x05` and `0x06` are missing — the UI only offers 8 effects.
+
+> **Solved in `docs/27` §10, on hardware.** `0x06` **exists**: the matrix is
+> dark at rest, and a pressed key lights up **and stays lit**. And the DLL's
+> builder has no branch for it, so it is a firmware effect the official software
+> does not know how to configure. `0x05` reacts to nothing (static red) and
+> still has no known function.  [?]
 
 Checkpoint has neither Duration nor Direction: it has a **"Transition Point",
 in number of keys pressed**. Changing it from 3 to 6 wrote `0c` into bytes

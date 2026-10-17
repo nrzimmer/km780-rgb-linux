@@ -78,7 +78,9 @@ The declared goal is met. Two directions, neither blocking the other:
 | which of the inert ones is `LightDisable` | decompilation only, and it gives the **name**, not the behaviour |
 | `base+1` of the effect slot | **only through the assembly** — the caller passes 472 KB of config by value on the stack, `docs/27` §8 |
 | the 5th byte of the stop record | same |
-| does the **Checkpoint** effect (byte 10 = 8) exist? | evidence against, `docs/27` §10 — the Wave control is missing |
+| ~~the effect byte 10 = 8~~ | **Checkpoint, reactive** — it was already in `docs/16` §4; hardware corroborates |
+| characterize effect **6** (outside the UI) | how long the key stays lit, which color it uses, `docs/27` §10 |
+| what byte 10 = `5` is | no branch in the DLL and no reaction in the firmware  `[?]` |
 | the `02 04 M 04 …` event | 6 occurrences, no context |
 
 ## Operating rules, learned from two scares

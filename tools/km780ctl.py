@@ -26,15 +26,20 @@ import sys, json
 sys.path.insert(0, __file__.rsplit('/', 1)[0])
 import km780lib as K
 
-# 8 (Checkpoint) is reactive to key presses, confirmed on hardware -- docs/27 §10.
+# 6 is not in the official UI and the DLL has no branch to build a profile for
+# it, but firmware 77 implements it: dark at rest, a pressed key lights up.
+# Confirmed on hardware -- docs/27 §10. 8 (Checkpoint) is reactive too.
 # 3 (Sonic) is internally called Reactive, profile .rea -- docs/27 §7.
 EFFECTS = {0: 'none (static)', 1: 'Wave', 2: 'Ripple', 3: 'Sonic',
-           4: 'Breathing', 7: 'Changeling', 8: 'Checkpoint (reactive)',
-           9: 'Cycle', 10: 'Rain'}
+           4: 'Breathing', 6: 'key lights up on press (outside the official UI)',
+           7: 'Changeling', 8: 'Checkpoint (reactive)', 9: 'Cycle',
+           10: 'Rain'}
 POLLING = {1: '1000 Hz', 2: '500 Hz', 4: '250 Hz', 8: '125 Hz'}
+
 
 def colors_per_slot(channels):
     return [(channels[0][i], channels[1][i], channels[2][i]) for i in range(K.NSLOTS)]
+
 
 def cmd_info(kb, args):
     active = kb.active_mode()
@@ -47,6 +52,7 @@ def cmd_info(kb, args):
             m, d[K.OFF_BRIGHTNESS], '%d  %s' % (ef, EFFECTS.get(ef, '?')),
             POLLING.get(d[K.OFF_POLLING], '%d ms' % d[K.OFF_POLLING]),
             '   <- active' if m == active else ''))
+
 
 def cmd_colors(kb, args):
     m = args['mode'] or kb.active_mode()
@@ -68,6 +74,7 @@ def cmd_colors(kb, args):
         print('' if n % 4 == 0 else '   ', end='')
     print()
 
+
 def cmd_backup(kb, args):
     target = args['rest'][0]
     out = {'colors': {}, 'modes': {}}
@@ -78,6 +85,7 @@ def cmd_backup(kb, args):
     json.dump(out, open(target, 'w'))
     print('backup of the 3 modes (color + mode payload) in %s' % target)
 
+
 def cmd_restore(kb, args):
     b = json.load(open(args['rest'][0]))
     for m in (1, 2, 3):
@@ -87,6 +95,7 @@ def cmd_restore(kb, args):
         kb.write_mode(m, bytes(b['modes'][str(m)]))
         kb.write_colors(m, [bytearray(c) for c in b['colors'][str(m)]])
         print('  mode %d rewritten' % m)
+
 
 def _paint(kb, args, change):
     """Read the colors, apply change(list_of_colors), write them back."""
@@ -103,6 +112,7 @@ def _paint(kb, args, change):
     kb.write_colors(m, channels)
     print('mode %d updated' % m)
 
+
 def cmd_set(kb, args):
     pairs = []
     for a in args['rest']:
@@ -118,14 +128,17 @@ def cmd_set(kb, args):
             colors[s] = c
     _paint(kb, args, change)
 
+
 def cmd_all(kb, args):
     c = K.color_of(args['rest'][0])
     print('  all %d slots -> %02x%02x%02x' % (K.NSLOTS, *c))
     _paint(kb, args, lambda colors: colors.__setitem__(slice(None), [c] * K.NSLOTS))
 
+
 def cmd_off(kb, args):
     args['rest'] = ['000000']
     cmd_all(kb, args)
+
 
 def _change_byte(kb, args, off, value, label):
     m = args['mode'] or kb.active_mode()
@@ -144,11 +157,13 @@ def _change_byte(kb, args, off, value, label):
     print('  confirmed on re-read: %d' % conf if conf == value
           else '  WARNING: re-read returned %d, not %d' % (conf, value))
 
+
 def cmd_brightness(kb, args):
     v = int(args['rest'][0])
     if not 0 <= v <= 4:
         sys.exit('brightness goes from 0 to 4 (docs/09 §6.6)')
     _change_byte(kb, args, K.OFF_BRIGHTNESS, v, 'brightness')
+
 
 def cmd_effect(kb, args):
     a = args['rest'][0]
@@ -162,10 +177,12 @@ def cmd_effect(kb, args):
                  % (v, ' '.join(str(x) for x in sorted(EFFECTS))))
     _change_byte(kb, args, K.OFF_EFFECT, v, 'effect')
 
+
 COMMANDS = {'info': (cmd_info, 0), 'colors': (cmd_colors, 0),
             'backup': (cmd_backup, 1), 'restore': (cmd_restore, 1),
             'set': (cmd_set, 1), 'all': (cmd_all, 1), 'off': (cmd_off, 0),
             'brightness': (cmd_brightness, 1), 'effect': (cmd_effect, 1)}
+
 
 def main():
     av = sys.argv[1:]
@@ -192,5 +209,6 @@ def main():
         sys.exit('%r needs at least %d argument(s)' % (cmd, minimum))
     with K.Keyboard() as kb:
         fn(kb, args)
+
 
 main()
