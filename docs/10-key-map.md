@@ -155,6 +155,23 @@ There are **132 slots** used out of the 144 available in the payload.
 
 ## Notes
 
+### The 19 special keys, by HID usage range  [I]
+
+The 19 synthetic IDs separate cleanly by the HID usage the factory table
+carries, and the split matches the physical keyboard:
+
+| HID | slots | how many | what it is |
+|---|---|---|---|
+| `0x00` | 0, 1, 2, 3, 4, 5 | 6 | the **G1-G6** keys (no factory function) |
+| `b3 ad ae af` | 6, 7, 8, 24 | 4 | **MR, M1, M2, M3** |
+| `b9 ba bb` | 42, 43, 44 | 3 | **brightness, timer, and the bag-symbol one** |
+| `a5 a6 a7 a8 a9` | 105, 106, 107, 115, 116 | 5 | the five **multimedia** ones |
+| `0x87` | 85 | 1 | international (stays dark in modes 1 and 2) |
+
+6 + 4 + 3 + 5 + 1 = 19. Which slot is which within each range (which one is M1
+and which is M3, for instance) has not been determined yet --
+`tools/km780matrix.py` is the way.
+
 - **19 synthetic IDs** (`0x801`-`0x813`), in slots 0, 1, 2, 3, 4, 5, 6, 7, 8,
   24, 42, 43, 44, 85, 105, 106, 107, 115, 116: these are the G keys, media keys
   and lighting zones, which have no virtual-key code.
