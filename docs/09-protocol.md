@@ -332,7 +332,24 @@ table already carries in the slots of the physical media keys (105–107, 115,
 
 That leaves `aa` and `ab` of the range's seven, and leaves exactly **Volume Up**
 and **Volume Down** in the app's dialog — which are the **wheel**, the only
-with no key and no LED slot. [I]
+control with no key and no LED slot.
+
+### `0xAB` = Volume Up, confirmed on hardware  [C]
+
+> Measured on 2026-10-17. It was `[I]`, deduced by elimination; now it is `[C]`.
+
+Assigning `0xAB` to byte 164 (slot 44, the Timer key) with the app in `app/`, the
+key started **turning the volume up** when pressed. It is the first direct
+confirmation of a code in this range that does not come from the factory table: `a5`–`a9`
+were already confirmed because the physical media keys carry them from the
+factory, but `aa`/`ab` appear on no key at all and had never shown up
+in a capture.
+
+**`0xAA` is still `[I]`** — it was not tested. But the deduction that predicted it as
+Volume Down just came out right at the other end of the pair, which strengthens it.
+
+This also shows that the function byte is **not restricted to what the key is**:
+is**: a code that from the factory exists only on the wheel works on an ordinary key.
 
 Macro and Text need extra data, which goes into the `0x0A` database page `0x09`
 (names) and `0x05` (content), indexed by `buf[3]`. A **Text**'s content never

@@ -63,8 +63,12 @@ codes. Five of them are these keys:
 Multimedia options — the five above plus **Volume Up** and **Volume Down**. And
 the volume wheel, the only control still unaccounted for, **emits no `f6` event
 and has no LED slot** (`25-physical-matrix.md`). Both ends meet: `aa` and `ab`
-are the two directions of the wheel, which is a control with no key and no
-LED.  **[I]**
+are the two directions of the wheel, which is a control with no key and no LED.
+
+**Confirmed for `ab` on 2026-10-17.** Assigned to byte 164 (the Timer key),
+`0xAB` **turns the volume up** — the deduction was right. `aa` has no direct
+test yet, but getting one end of the pair right reinforces the other. See
+`docs/09` §5.2. **[C]** for `ab`, **[I]** for `aa`.
 
 ## Consequence for the tooling
 
