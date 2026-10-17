@@ -76,8 +76,9 @@ The declared goal is met. Two directions, neither blocking the other:
 | the macro's Playback Option | decompilation |
 | LED Sleep: do the parameters reach the keyboard? | `SleepMode`/`SleepMin`/`SleepEffect*` exist in the app; whether they go on the wire is unknown |
 | which of the inert ones is `LightDisable` | decompilation only, and it gives the **name**, not the behaviour |
-| `base+1` of the effect slot; 5th byte of the stop | decompile the **caller** of `FUN_100d5060` |
-| does the **Checkpoint** effect (byte 10 = 8) exist? | testable on hardware: `docs/27` §8 |
+| `base+1` of the effect slot | **only through the assembly** — the caller passes 472 KB of config by value on the stack, `docs/27` §8 |
+| the 5th byte of the stop record | same |
+| does the **Checkpoint** effect (byte 10 = 8) exist? | evidence against, `docs/27` §10 — the Wave control is missing |
 | the `02 04 M 04 …` event | 6 occurrences, no context |
 
 ## Operating rules, learned from two scares

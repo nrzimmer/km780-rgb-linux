@@ -124,7 +124,76 @@ Two findings:
 `5` and `6` have no branch in the function — consistent with their never
 appearing in a capture. They probably do not exist.
 
-## 8. What stays open
+## 8. The caller: why the parameters got lost  [C]
+
+`FUN_100d5060` has two callers, `0x100d1fd0` and `0x100d24c0`. Both do the same
+thing before calling:
+
+    puVar3 = &DAT_102fe6b8;          // the global configuration blob
+    puVar4 = auStack_73698 + 1;
+    for (i = 0x1cd9d; i != 0; i--)   // 118,173 dwords = 472,692 bytes
+      *puVar4++ = *puVar3++;
+    FUN_100d5060();
+
+**The entire configuration blob goes by value on the stack**, 472 KB per call.
+That is why Ghidra recovers neither a signature nor an origin for
+`uStack_7450c` and `uStack_74510`: they are neither computed nor passed as
+arguments, they are **fields of that blob at a fixed offset**, read from a
+region the decompiler attributed to the wrong frame.
+
+Practical consequence: **pinning down `base+1`'s offset requires the assembly**,
+not the pseudocode. The pseudocode has already given everything it can here.
+
+The blob is a per-device array, with a stride of `0x264c4` = **157,380 bytes**
+(the same stride appears as a dword index, `0x9931 * 4`).
+
+## 9. The per-key data rule, and seven out of seven  [C]
+
+After building the gradient, the caller enters the `FUN_100d7170` loop — the
+per-key data builder (`docs/22` §1) — **only** if the effect index is `2`, `3`,
+`10` or `7`, and the loop runs **3 times**:
+
+    if (ef == 2 || ef == 3 || ef == 10 || ef == 7) {
+      i = 1; do { ...; FUN_100d7170(); i++; } while (i < 4);
+    }
+
+This predicts which effects fire three helper packets. Against the table in
+`docs/15` §4, built from the capture and unrelated to this code:
+
+| Effect | Predicted | Captured |
+|---|---|---|
+| Ripple (2) | 3 packets | `0x0B` x3 |
+| Sonic (3) | 3 packets | `0x0B` x3 |
+| Changeling (7) | 3 packets | `0x15` x3 |
+| Rain (10) | 3 packets | `0x12` x3 |
+| Wave (1) | none | none |
+| Breathing (4) | none | none |
+| Cycle (9) | none | none |
+
+**Seven out of seven, including the three negatives.** And the "x3" is not a
+coincidence with the R/G/B channels: it is the loop's count.
+
+## 10. Checkpoint on the hardware: evidence against  [I]
+
+Test with `tools/km780effect.py 2 8 5 6`, mode 2 (static, brightness 4):
+
+| byte 10 | what the keyboard did |
+|---|---|
+| `8` (Checkpoint) | all red |
+| `5` (no branch in the builder) | all red |
+| `6` (no branch in the builder) | dark |
+
+The firmware **does tell** the three values apart — `6` goes dark, the other
+two do not — so it is not a single "default" for the unknown. But `8` did
+exactly the same as `5`, and `5` is precisely an index that does not exist in
+the app. That weighs against Checkpoint being a live effect on FW 77.
+
+Caveat: mode 2 was static, so its effect slots are probably zeroed, and a
+legitimate effect might not animate there either. **The control is missing**:
+run Wave (index 1) on the same mode. If Wave animates and `8` does not, that
+settles it.
+
+## 11. What stays open
 
 - `base+1`: a scalar, originating in the caller.  [I]
 - The fifth byte of the stop record.  [I]
