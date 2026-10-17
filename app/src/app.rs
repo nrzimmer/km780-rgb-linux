@@ -9,6 +9,7 @@ use std::collections::HashSet;
 use eframe::egui;
 use egui::{Color32, Pos2, Rect, Sense, Stroke, Vec2};
 
+use crate::assign::{self, Record, OFF_FUNCTIONS};
 use crate::effects;
 use crate::layout;
 use crate::proto::{self, Channels, Keyboard};
@@ -63,6 +64,9 @@ pub struct App {
     undo: Option<State>,
     selection: HashSet<usize>,
     color: [u8; 3],
+    /// Function code chosen in the remap UI. F13 by default: it is the start of
+    /// the free-key space (`docs/28`).
+    function: u8,
     status: String,
     error: Option<String>,
     show_others: bool,
@@ -78,6 +82,7 @@ impl App {
             undo: None,
             selection: HashSet::new(),
             color: [255, 0, 0],
+            function: 0x68,
             status: String::new(),
             error: None,
             show_others: false,
@@ -183,9 +188,11 @@ impl App {
         let mode_dirty = self.mode_dirty();
         let info = self.buffer.info.clone();
         let mode = self.mode;
+        let remapped = assign::remapped(&self.stored.info, &self.buffer.info);
         // Re-read the mode before writing: the M1/M2/M3 keys switch the mode
         // inside the keyboard without telling the host (`docs/29`, rule 4), and writing
         // color in the wrong mode would paint the wrong profile.
+        let stored_info = self.stored.info.clone();
         let ok = self.with_keyboard(|kb| {
             let now = kb.active_mode()?;
             if now != mode {
@@ -202,6 +209,10 @@ impl App {
             if color_dirty {
                 kb.write_colors(mode, &channels)?;
             }
+            // The other two modes receive only the function bytes that changed.
+            // changed. The same function the CLI's `--function` uses, which is what
+            // was validated on the wire.
+            assign::propagate(kb, mode, &stored_info, &info)?;
             Ok(())
         });
         if ok.is_some() {
@@ -210,8 +221,14 @@ impl App {
             self.status = match (color_dirty, mode_dirty) {
                 (true, true) => format!("{n} key(s) and mode {mode} written"),
                 (true, false) => format!("{n} key(s) written in mode {mode}"),
-                _ => format!("brightness/effect written in mode {mode}"),
+                _ => format!("mode {mode} written"),
             };
+            if !remapped.is_empty() {
+                self.status += &format!(
+                    "; {} function(s) stored in the 3 modes",
+                    remapped.len()
+                );
+            }
         }
     }
 
@@ -366,6 +383,15 @@ impl eframe::App for App {
             }
 
             ui.add_space(12.0);
+            ui.separator();
+            ui.heading("Key function");
+            if self.buffer.has_info() {
+                self.function_controls(ui);
+            } else {
+                ui.label("no mode payload read");
+            }
+
+            ui.add_space(12.0);
             ui.collapsing("Outros slots", |ui| {
                 ui.label(
                     "Named slots the drawing does not place: international \
@@ -463,6 +489,85 @@ impl App {
         }
     }
 
+    /// Key remapping: bytes 120-263 of the mode payload.
+    ///
+    /// It works for any of the 132 keys, and the remap lives in the keyboard --
+    /// keyboard -- it survives a reboot and holds on another computer, with no process
+    /// running (`docs/28`). Like everything here, it only goes to the wire on `Apply`.
+    fn function_controls(&mut self, ui: &mut egui::Ui) {
+        let sel: Vec<usize> = {
+            let mut v: Vec<usize> = self.selection.iter().copied().collect();
+            v.sort_unstable();
+            v
+        };
+        if sel.is_empty() {
+            ui.small("select a key to see or change its function");
+            return;
+        }
+
+        if let [slot] = sel[..] {
+            let o = OFF_FUNCTIONS + slot;
+            let current = self.buffer.info[o];
+            let key_name = slots::SLOTS.get(slot).copied().unwrap_or("?");
+            ui.label(format!(
+                "{key_name}: byte {o} = {} ({})",
+                assign::name(current),
+                assign::range_name(current)
+            ));
+        } else {
+            ui.label(format!("{} keys selected", sel.len()));
+        }
+
+        egui::ComboBox::from_label("nova function")
+            .selected_text(assign::name(self.function))
+            .show_ui(ui, |ui| {
+                for c in assign::free_codes() {
+                    ui.selectable_value(&mut self.function, c, assign::name(c));
+                }
+            });
+
+        if ui.button("Assign to the selected").clicked() {
+            let f = self.function;
+            for &slot in &sel {
+                self.buffer.info[OFF_FUNCTIONS + slot] = f;
+            }
+            self.status = format!(
+                "{} key(s) become {} in the buffer -- it goes to the 3 modes on Apply",
+                sel.len(),
+                assign::name(f)
+            );
+        }
+
+        // Restore depends on having stored the original. With no log it
+        // refuses instead of guessing: guessing a function code is worse than doing
+        // nothing, and the factory table is in `docs/10`.
+        if ui.button("Restore previous function").clicked() {
+            let record = Record::load();
+            let mode = self.mode;
+            let mut done = 0;
+            let mut no_key: Vec<&str> = Vec::new();
+            for &slot in &sel {
+                match record.previous(mode, slot) {
+                    Some(v) => {
+                        self.buffer.info[OFF_FUNCTIONS + slot] = v;
+                        done += 1;
+                    }
+                    None => no_key.push(slots::SLOTS.get(slot).copied().unwrap_or("?")),
+                }
+            }
+            self.status = if no_key.is_empty() {
+                format!("{done} function(s) went back to the stored value")
+            } else {
+                format!(
+                    "{done} restored; no stored value for {} -- \
+                     the factory code is in docs/10",
+                    no_key.join(", ")
+                )
+            };
+        }
+        ui.small(format!("log: {}", Record::path()));
+    }
+
     fn draw_keyboard(&mut self, ui: &mut egui::Ui) {
         let (lu, lv) = layout::extent();
         let size = Vec2::new(lu * UNIDADE + 8.0, lv * UNIDADE + 8.0);
@@ -485,9 +590,22 @@ impl App {
             );
 
             let id = ui.make_persistent_id(("key", slot));
-            let resp = ui.interact(r, id, Sense::click_and_drag());
+            let mut resp = ui.interact(r, id, Sense::click_and_drag());
             if resp.clicked() {
                 cliques.push(slot);
+            }
+            if resp.hovered() {
+                let c = self.buffer.colors[slot];
+                let f = self.buffer.info.get(OFF_FUNCTIONS + slot).copied();
+                resp = resp.on_hover_text(match f {
+                    Some(f) => format!(
+                        "{}  slot {slot}\ncolor #{:02X}{:02X}{:02X}\nfunction {} ({})",
+                        t.name, c[0], c[1], c[2],
+                        assign::name(f), assign::range_name(f)
+                    ),
+                    None => format!("{}  slot {slot}\ncolor #{:02X}{:02X}{:02X}",
+                                    t.name, c[0], c[1], c[2]),
+                });
             }
             if resp.dragged() {
                 drags.push(slot);

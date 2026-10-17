@@ -7,6 +7,10 @@ description = "Lighting control for the G.SKILL Ripjaws KM780 RGB"
 [dependencies]
 eframe = "0.37.0"
 egui = "0.37.0"
+# Only for the assignment log, a flat JSON shared with tools/km780assign.py.
+# The format has to match byte for byte what the Python writes, so writing a
+# parser by hand is not worth it.
+serde_json = "1.0.145"
 
 # The hidapi backend is chosen per target, and this is NOT a preference:
 # see docs/29. On Linux libusb gets access without root (systemd's uaccess

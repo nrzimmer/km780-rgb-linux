@@ -7,6 +7,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app;
+mod assign;
 mod effects;
 mod layout;
 mod proto;
@@ -135,10 +136,85 @@ fn set_mode_byte(offset: usize, value: &str) {
     }
 }
 
+/// `km780 --function Timer` reads; `km780 --function Timer=f14` writes **to
+/// modes**, saving the previous value.
+///
+/// Same semantics as `tools/km780assign.py`, including the record in
+/// `~/.config/km780/assignments.json` -- the two have to see what the other
+/// stored, otherwise one's `restore` does not undo the other's.
+fn function(arg: &str) {
+    let (key_name, new_payload) = match arg.split_once('=') {
+        Some((t, c)) => {
+            let c = c.trim().to_lowercase();
+            let v = if let Some(n) = c.strip_prefix('f') {
+                let n: u8 = n.parse().expect("f13..f24");
+                assert!((13..=24).contains(&n), "only F13..F24 by name");
+                0x68 + (n - 13)
+            } else {
+                u8::from_str_radix(&c, 16).expect("hex, ex. 68")
+            };
+            (t.trim().to_string(), Some(v))
+        }
+        None => (arg.trim().to_string(), None),
+    };
+    let slot = slots::slot_of(&key_name).expect("unknown key");
+    let off = assign::OFF_FUNCTIONS + slot;
+
+    let kb = proto::Keyboard::open_device().expect("could not open");
+    let record = assign::Record::load();
+
+    // Read: all three modes, because the table is per mode.
+    for mode in 1..=3u8 {
+        let d = kb.read_mode(mode).expect("0x82");
+        let before = d[off];
+        match new_payload {
+            None => println!(
+                "mode {mode}  {key_name}  byte {off} = {} ({}){}",
+                assign::name(before),
+                assign::range_name(before),
+                match record.previous(mode, slot) {
+                    Some(v) => format!("   previous value stored: {}", assign::name(v)),
+                    None => String::new(),
+                }
+            ),
+            Some(_) => {}
+        }
+    }
+    let Some(v) = new_payload else { return };
+
+    // Writing through the SAME path as the GUI: the active mode via write_mode,
+    // other two through assign::propagate. That way the wire test done here
+    // here holds for the window's `Apply` too.
+    let mode = kb.active_mode().expect("0x81");
+    let before_payload = kb.read_mode(mode).expect("0x82");
+    let mut after = before_payload.clone();
+    after[off] = v;
+    kb.write_mode(mode, &after).expect("0x02");
+    let changed = assign::propagate(&kb, mode, &before_payload, &after).expect("propagate");
+
+    for m in 1..=3u8 {
+        let back = kb.read_mode(m).expect("0x82 de back");
+        println!(
+            "mode {m}  {key_name}  byte {off} = {}{}",
+            assign::name(back[off]),
+            if back[off] == v { "" } else { "   DID NOT TAKE" }
+        );
+    }
+    println!(
+        "{} slot(s) propagated to all 3 modes; previous values in {}",
+        changed.len(),
+        assign::Record::path()
+    );
+}
+
 fn main() -> eframe::Result<()> {
     let argv0: Vec<String> = std::env::args().collect();
     if let Some(p) = argv0.iter().position(|a| a == "--brightness") {
         set_mode_byte(proto::OFF_BRIGHTNESS, &argv0[p + 1]);
+        return Ok(());
+    }
+    if let Some(p) = argv0.iter().position(|a| a == "--function") {
+        function(&argv0[p + 1]);
         return Ok(());
     }
     if let Some(p) = argv0.iter().position(|a| a == "--effect") {

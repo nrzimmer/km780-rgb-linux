@@ -12,7 +12,8 @@
     src/slots.rs    the 132 slot names, GENERATED from the Python list
     src/layout.rs   the physical layout, written by hand, with a test
     src/effects.rs  the byte 10 catalog, from the canonical table in docs/09 §7.1
-    src/app.rs      the single screen: matrix, color, brightness, effect, Apply
+    src/assign.rs   the function table (bytes 120-263) and the log from docs/28
+    src/app.rs      the single screen: matrix, color, brightness, effect, function, Apply
 
 It builds on both targets, with no warnings:
 
@@ -80,6 +81,7 @@ Color write, with `km780 --paint F1,F2,F3 ff0000`:
     the re-read matches what was written, across the 144 slots of the 3 channels
 
 Brightness and effect write: the one-byte diff from the section above.
+Key function write: the remapping section.
 
 The check is always by re-reading with `0x89`, never by eye: this
 unit has LEDs with the R component stuck (`docs/27` §10).
@@ -123,17 +125,57 @@ Changeling, Rain), the app only changes byte 10 -- the animation comes out with 
 gradient already on the keyboard. The combo says so on each one, because
 otherwise it looks as if the color picker stopped working.
 
+## Key remapping: the two traps from docs/28, closed  [C]
+
+The assignment table (bytes 120-263, one byte per slot) also goes in through
+`Apply`. `docs/28` left two traps documented, and both are
+closed in code:
+
+**The table is per mode.** Remapping only in the active mode makes the key stop
+working when the M1/M2/M3 keys switch the profile -- and they switch without
+telling the host. `assign::propagate` carries **only the function bytes that changed**
+to the other two modes. Only the ones that changed, never the active mode's whole
+payload: that would carry its color, brightness and effect along to the other
+profiles.
+
+**Undo depends on having stored the original.** The app reads and writes the
+**same** `~/.config/km780/assignments.json` as `km780assign.py`, with the
+same `"mode/slot"` keys. A format of its own would make one tool's `restore` not
+see what the other stored. And `store` uses
+`entry().or_insert()`, which is Python's `setdefault` -- the bug that destroyed
+undo when the same remapping was reapplied does not come back by this path. There is a
+test for it. With no log, the restore button **refuses** instead of
+guessing.
+
+### The GUI and the CLI go through the same function, on purpose
+
+Validating `--function` on the wire would prove nothing about the window's `Apply` if
+they were two code paths. So `assign::propagate` is the single path: the GUI calls it
+in `Apply`, the CLI in `--function`. Measured, with the Timer (slot 44, byte 164):
+
+    F13 -> F14   modes 1, 2 and 3    1 slot propagated
+    F14 -> F13   modes 1, 2 and 3    1 slot propagated
+    log after the two rewrites:  {"1/44": 186, "2/44": 186, "3/44": 186}
+
+The `186` = `0xBA` is the Timer's factory function code. It **survived
+two rewrites**, which is exactly what the `docs/28` bug destroyed.
+
 ## What v1 does, and what it does not
 
 It does: read the active mode, the mode payload and the three color channels; draw the
-keyboard; edit a local buffer of color, brightness and effect; `Apply` writes,
-`Discard` re-reads, `Undo` goes back to the state before the last `Apply`.
+keyboard; edit a local buffer of color, brightness, effect and key function;
+`Apply` writes, `Discard` re-reads, `Undo` goes back to the state before the
+last `Apply`. Hovering a key shows slot, color and function.
 
 It does not, on purpose:
 
 - **The effect gradients** (`0x0B`/`0x0E`/`0x0F`/`0x12`/`0x15`) are not
-  editable -- only the byte that turns the effect on. They are the next step, along with the
-  key remapping from `docs/28`.
+  editable -- only the byte that turns the effect on.
+- **Macro and Text** (`0xB4` and `0xB8`) are not offered in the remapping: both
+  need extra data in the `0x0A` base and the content of a Text has never
+  appeared on the wire (`docs/17` §7). The field accepts raw hex for whoever knows
+  what they are doing, with the range announced beside it.
+- **Profiles saved to a file** -- the last item of `docs/29`.
 - **`NumSep` has no position in the drawing.** `docs/25` calls the key
   `NumEnter`, the slot list has `NumSep`, and it is not obvious they are the same.
   Guessing would put color on the wrong key; it stays in the "Other slots" list.
