@@ -92,8 +92,12 @@ BY_NAME = {}
 for _i, _n in enumerate(SLOTS):
     BY_NAME[_n.lower()] = _i
 
-# slots the matrix addresses but that have no physical key on the US/ABNT layout
-NO_KEY = (16, 32, 35, 68, 71, 80, 85, 88, 91, 129)
+# Slots the matrix addresses but that have no physical key in the US/ABNT
+# layout. Only the five with a HID code in the international range 0x85-0x8b.
+# Slots 16, 32, 68, 71 and 88 were once on this list for coming back dark in a
+# matrix read -- but dark only means "nobody painted it", and the set of dark
+# slots changes with the mode. See docs/23 §6.
+NO_KEY = (35, 80, 85, 91, 129)
 
 def slot_of(name):
     """Accepts the key name or the slot number. Clear error if neither exists."""

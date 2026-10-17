@@ -155,9 +155,14 @@ There are **132 slots** used out of the 144 available in the payload.
 
 ## Notes
 
-- **19 synthetic IDs** (`0x801`-`0x813`), in slots 0, 1, 2, 3, 4, 5, 6, 7, 8, 24, 42, 43, 44, 85, 105, 106, 107, 115, 116: these are the G keys,
-  media keys and lighting zones, which have no virtual-key code.
+- **19 synthetic IDs** (`0x801`-`0x813`), in slots 0, 1, 2, 3, 4, 5, 6, 7, 8,
+  24, 42, 43, 44, 85, 105, 106, 107, 115, 116: these are the G keys, media keys
+  and lighting zones, which have no virtual-key code.
 - **4 international slots** (slots 35, 80, 91, 129) have `vk=0` with HID usage
-  `0x8b, 0x88, 0x89, 0x85`: keys from JIS/ABNT layouts that exist in the matrix but not on the
-  US physical layout.
+  `0x8b, 0x88, 0x89, 0x85`: keys from JIS/ABNT layouts that exist in the matrix
+  but not on the US physical layout. Slot 85 (`hid 0x87`) behaves the same way
+  in a matrix read, so there are 5 in all.
+- **Careful about reading the matrix as proof of absence.** A slot that comes
+  back dark in `0x89` only says nobody painted a color into it: the set of dark
+  slots changes with the mode. See `23-hardware-validation.md` §6.
 - The remaining 12 of the 144 slots are not addressed by this table. [?]

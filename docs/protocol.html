@@ -203,6 +203,7 @@ footer{margin-top:4rem;padding-top:1.2rem;border-top:1px solid var(--rule);
       <span><b>264</b> bytes per packet</span>
       <span><b>19</b> known commands</span>
   <span><b>9</b> read/write pairs</span>
+  <span><b>read</b> on the keyboard, not only in the capture</span>
       <span><b>144</b> LED slots, 132 used</span>
       <span><b>3</b> modes</span>
     </div>
@@ -425,6 +426,12 @@ flash between pages.</p>
 <p>The color path. <b>A complete update is three packets, one per channel</b> —
 it is not key paging. Each packet carries 144 bytes, one per LED slot, with
 that channel's intensity on that LED.</p>
+<p>Read from the author's keyboard: mode 1 has 127 slots at <code>ff0000</code>, and
+mode 2 has 122 at <code>00fb2f</code> plus 5 red ones, and mode 3 has 11
+distinct colors — the Wave's gradient already rasterized into the matrix. The
+most frequent color in mode 3 is <code>c6010b</code>, which is exactly one of
+the color stops stored in that mode's <code>0x0A</code> database: the stored
+gradient and the matrix agree.</p>
 </div>
 
 <div class="scroll">
@@ -494,10 +501,24 @@ o HID usage e o virtual-key code.</p>
 
 <h3>In the matrix, but not on the keyboard</h3>
 <div class="col">
-<p>Ten slots within the 132 have no physical key in the US/ABNT layout — they are
-positions from JIS/ABNT layouts and zones the matrix addresses but the board does not
-expose. The remaining 12 slots (144 − 132) are addressed by no table at
-all: they are always zeroed, so they simply do not exist.</p>
+<p>Five slots within the 132 have no physical key on the US/ABNT layout — all
+with a HID usage in the international range <code>0x85</code>–<code>0x8b</code>,
+and four of them with <code>vk = 0</code>. They are positions from JIS/ABNT
+layouts that the matrix addresses but the board does not expose. The remaining
+12 slots (144 − 132) are addressed by no table at all and stay dark in every
+mode: those simply do not exist.</p>
+</div>
+
+<div class="note danger">
+  <div class="hd">A dark slot does not mean a non-existent slot</div>
+  <p>This list once had <b>ten</b> slots. The other five went in because they
+  came back dark in a matrix read — and that inference does not hold. Reading
+  the real keyboard, the set of dark slots <b>changes with the mode</b>: in
+  modes 1 and 2 they are the international keys, in mode 3 they are the media
+  keys and the zones. Only one slot is dark in all three.</p>
+  <p>The matrix stores <b>what was painted last</b>. A dark slot only says
+  nobody wrote a color into it. Settling this for good means writing a color
+  into the suspect slot and looking at the keyboard.</p>
 </div>
 <div class="orphans" id="orphans"></div>
 
@@ -852,7 +873,8 @@ left, and why.</p>
 <tr><td class="m">bytes 72–107</td><td>partial: 75–77 = number of color stops. <b>Settleable by experiment.</b></td></tr>
 <tr><td class="m">the 02 04 M 04 … event</td><td>6 occurrences, meaning unknown. Listen to EP <code>0x83</code> while working the keyboard.</td></tr>
 <tr><td>LED Sleep</td><td>the control was never captured</td></tr>
-<tr><td class="m">reading page 0x09</td><td>the app never reads it. <b>Safe to test on Linux</b></td></tr>
+<tr><td class="m">slots 16, 32, 68, 71, 88</td><td>they were once listed as having no physical key; the evidence did not hold. They do have a real virtual-key. <b>Settleable by experiment</b> — paint and look</td></tr>
+<tr><td class="m">why there are 3 effect<br>slots per mode</td><td>all three hold identical data within a mode; they are not three different effects</td></tr>
 </tbody>
 </table>
 </div>

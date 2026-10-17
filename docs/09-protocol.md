@@ -464,8 +464,14 @@ Ver `22-gaps-solved.md` §0.3 e §2.2.  **[C]**
 
 - what the remaining 12 slots are (144 − 132) — they are always zeroed, so they
   simply do not exist  **[I]**
-- beyond those, **10 slots within the 132 also have no physical key** in the
-  layout US/ABNT: 16, 32, 35, 68, 71, 80, 85, 88, 91, 129  **[C]**
+- besides those, **5 slots within the 132 have no physical key** on the US/ABNT
+  layout: 35, 80, 85, 91, 129 — all with a HID usage in the international range
+  `0x85`–`0x8b`, and four with `vk = 0`  **[C]**
+- slots 16, 32, 68, 71 and 88 were once listed here as having no physical key;
+  **the evidence did not support that** and they were removed — see
+  `23-hardware-validation.md` §6. A slot that is dark in a matrix read only says
+  nobody painted a color into it, and the set of dark slots changes with the
+  mode  **[?]**
 - does `0x89` (read) return the matrix in the same format — **yes**, confirmed
   em `20-capture-09-dump-read.md` §3  **[C]**
 
