@@ -47,6 +47,9 @@ goal of this project.
 | Event channel `0x83` (ACK, key, brightness) | **mapped** — `docs/22` §2 |
 | Visual view of the protocol | `docs/protocol.html` |
 
+> **Picking the work back up?** Read `STATUS.md` first: it says where things
+> stand, what the next step is, and the operating rules that were expensive to learn.
+
 ## Using it
 
     tools/km780ctl.py info                 current state, no writing
