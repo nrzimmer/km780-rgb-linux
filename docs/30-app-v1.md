@@ -445,13 +445,28 @@ returned the 8.65 s pause one from `docs/21`, mode 2 the `A B C` from `docs/16`.
 were all on mode 3, which was virgin and was returned to `0xFF` at the end with
 `--macro-erase`.
 
-### What is missing, and why it cannot be done alone
+### `0xB4` was solved by pressing the key
 
-**Which macro the `0xB4` runs.** The key receives `0xB4` (`docs/16` §3) and the
-link to the index is `[I]` since the capture. Settling it calls for **pressing the
-key** and seeing what comes out -- and pressing a key is the one part of this project
-that cannot be automated. The catalog already offers the `0xB4`, with the on-screen
-warning that the index is not confirmed and that the app always writes to 0.
+The key gets `0xB4` (`docs/16` §3) and the link to the index had been `[I]`
+since the capture. Solving it required **pressing the key** and seeing what
+comes out -- the only part of this project that cannot be automated.
+
+What showed up: `0xB4` runs the macro in bank 1 of the active mode, and **only on a
+G key**. G1 and G2 played the same macro; `Timer` and `LCtrl` played
+nothing, and the `LCtrl` also **went mute** -- it stopped emitting Ctrl, which shows
+that the firmware accepted the remapping and only does not play. Detail in `docs/09`
+§7b.2.
+
+A bonus finding along the way: **G1 and G2 on this keyboard still had `0xB4`**,
+put there by the official app during the Windows capture. `--function G1=b4`
+answered "DID NOT STICK / 0 slots propagated" because there was nothing to
+change. So the decisive test ran **with no write of ours at all**, in the state
+G.SKILL's own app had set up -- the cleanest control that question could have
+had.
+
+On screen, the `0xB4` warning names the key: `only G1-G6 run macros: LCtrl
+would go silent instead`. Naming matters because the failure is silent -- the
+key simply stops working, with no error and no clue.
 
 ## A bug the macro section found in the rest of the app
 

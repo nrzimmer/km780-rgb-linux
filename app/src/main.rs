@@ -317,6 +317,14 @@ fn macro_erase(mode: u8) {
     }
 }
 
+/// `km780 --macro-name NAME`: writes the name of macro index 0 into the
+/// `0x0A` page `0x09` base.
+fn macro_name(name: &str) {
+    let kb = proto::Keyboard::open_device().expect("could not open");
+    kb.write_macro_name(0, name).expect("0x0a");
+    println!("macro 0 named {name:?} in the 0x0A page 0x09 base");
+}
+
 /// `km780 --macro-list`: the macros saved in files, without touching the keyboard.
 fn macro_list() {
     let names = macros::list();
@@ -441,6 +449,10 @@ fn main() -> eframe::Result<()> {
     }
     if let Some(p) = argv.iter().position(|a| a == "--macro-erase") {
         macro_erase(argv[p + 1].parse().expect("mode 1, 2 or 3"));
+        return Ok(());
+    }
+    if let Some(p) = argv.iter().position(|a| a == "--macro-name") {
+        macro_name(&argv[p + 1]);
         return Ok(());
     }
     if std::env::args().any(|a| a == "--macro-import") {

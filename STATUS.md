@@ -65,11 +65,15 @@ event, saves it to `~/.config/km780/macros/`, reads what is on the keyboard
 `--macro-import`, `--macro-list`, `--macro-write NAME [mode]`,
 `--macro-erase MODE`.
 
-What is missing is **which macro `0xB4` runs**. The key receives `0xB4` and the
-binding to the index has been `[I]` since the capture (`docs/16` §3). Solving
-it means pressing the key and seeing what comes out — the one part of the
-project that cannot be automated. The function combo box already offers `0xB4`
-with the warning on screen.
+**`0xB4` was solved on the keyboard** on 2026-10-17: it runs the macro in
+bank 1 of the active mode, and **only on a G key** (G1 and G2 played the same
+macro; Timer and LCtrl played nothing, and LCtrl stayed mute afterwards). So
+the G.SKILL UI offering macros only on the G keys is a firmware limit, not an
+interface choice. The app refuses `0xB4` outside G1–G6 with a warning naming
+the key. Details in `docs/09` §7b.2.
+
+What is still unmeasured is the field that would hold a **per-key index**, if
+it exists at all — in practice the two G keys tested both play index 0.
 
 Protocol gaps closed along the way, all measured on 2026-10-17 and detailed in
 `docs/09` §7b: `0x85` reads a macro (which had never been read here), a virgin

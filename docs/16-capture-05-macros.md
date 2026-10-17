@@ -85,6 +85,12 @@ usage because nothing had been remapped.
 `0xb4` in G1's slot is the "run macro" code. Which macro probably comes from
 the index in the `0x05` header.  [I]
 
+> **Measured on 2026-10-17.** G1 on this keyboard **still had `0xb4`**, from
+> this capture, and pressing it ran the macro in bank 1 of the active mode --
+> `a`, an 8.70 s pause, `b`, matching the 8.65 s recorded. G2, the same, and the
+> **same** macro: the index does not come from the key. On a non-G key `0xb4`
+> plays nothing and also mutes the key. See `docs/09` §7b.2.  [C]
+
 ## 4. Checkpoint = effect `0x08`  [C]
 
 It was the missing ID. With it the catalog is complete:

@@ -852,15 +852,27 @@ impl App {
             ui.small(assign::range_name(self.function));
         });
 
-        // 0xB4 is the only function that depends on something else being
-        // stored on the keyboard, and which macro it runs is not measured.
-        // Saying so here is more honest than letting the key go mute with no
-        // explanation.
+        // Only the G keys run a macro -- measured on 2026-10-17. On any other
+        // key 0xB4 is accepted by the table and the key goes **mute**, which is
+        // the worst possible failure: silent and with no clue on screen. That is
+        // why the warning names the key instead of speaking in general.
         if self.function == 0xB4 {
-            ui.colored_label(
-                WARN,
-                "macro: write one below first \u{2014} which macro this runs is not                  confirmed, the app writes index 0",
-            );
+            let wrong: Vec<&str> = sel
+                .iter()
+                .filter(|&&s| !assign::runs_macro(s))
+                .filter_map(|&s| slots::SLOTS.get(s).map(|n| slots::display_name(n)))
+                .collect();
+            if wrong.is_empty() {
+                ui.small("runs the macro in bank 1 of the active mode \u{2014} write one below");
+            } else {
+                ui.colored_label(
+                    ERROR,
+                    format!(
+                        "only G1\u{2013}G6 run macros: {} would go silent instead",
+                        wrong.join(", ")
+                    ),
+                );
+            }
         }
 
         ui.horizontal(|ui| {

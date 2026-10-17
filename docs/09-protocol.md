@@ -647,6 +647,40 @@ a second later it replies with the new. Anyone checking a write has to
 wait; without that the check reports a failure that never happened — which is
 exactly what happened here before the matrix above was run.
 
+### 7b.2 `0xB4` only plays on a G key  [C]
+
+Measured on 2026-10-17, with the keyboard playing the macro and an X11 listener on the
+other end. The `0xB4` is accepted by the assignment table on **any**
+key, but it only runs on a G key:
+
+| Key | Who set the `0xB4` | Result |
+|---|---|---|
+| G1 | the official app, in the capture | **runs the macro in bank 1 of the active mode** |
+| G2 | the official app, in the capture | **runs the same macro** |
+| Timer | this app | nothing |
+| LCtrl | this app | nothing, and the key goes **mute** |
+
+The `LCtrl` case is what gives the behaviour its shape: the key **stopped
+emitting Ctrl**, so the firmware accepted the remapping — it just does not play the
+macro. `0xB4` outside a G key is silence, the same as `0x00` (`docs/17`
+§5.1).
+
+The second is that **the index does not come from the key**: G1 and G2 played
+the *same* macro, the one at index 0. What the old question "which macro does
+`0xB4` run" (`docs/16` §3) wanted to know has a practical answer — the one in
+bank 1 of the active mode —, even though the field that would hold a per-key
+index, if it exists, remains unlocated.
+
+The second is that **the index does not come from the key**: G1 and G2 played the *same*
+macro, the one at index 0. What the old question "which macro does the `0xB4` run"
+(`docs/16` §3) wanted to know has a practical answer — the one in bank 1 of the
+active mode —, even though the field that would hold a per-key index, if it exists,
+remains unlocated.
+
+A valid test because the `Timer` **had already worked** with another code: in
+`docs/09` §5.2 it received `0xAB` and turned the volume up. The key acts; what does not
+act is the `0xB4` on it.
+
 ### 7b.1 `0x85` — ler a macro  [C]
 
 It had never shown up in a capture: the official app was only ever seen **writing**

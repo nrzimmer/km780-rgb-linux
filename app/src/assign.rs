@@ -70,6 +70,33 @@ pub static GROUPS: &[(&str, &[Function])] = &[
 /// not have.
 static MACRO: &[Function] = &[f(0xB4, "Run the macro on the keyboard")];
 
+/// The slots that **run** a macro: G1-G6, slots 0 to 5.
+///
+/// Measured on 2026-10-17. `0xB4` is accepted by the table on any key, but it
+/// only plays on a G key:
+///
+///     G1     -> runs the macro in bank 1 of the active mode
+///     G2     -> runs the same macro
+///     Timer  -> nothing
+///     LCtrl  -> nothing, and the key goes **mute**
+///
+/// The LCtrl case is what gives the behaviour its shape: the key stopped
+/// emitting Ctrl, so the firmware accepted the remap; it just does not play
+/// the macro. `0xB4` outside a G key is silence, same as `0x00`
+/// (`docs/17` §5.1).
+///
+/// G1 and G2 ran the **same** macro, the one at index 0 -- the index does not
+/// come from the key.
+///
+/// This explains why G.SKILL's UI only offers macros on the G keys: it is not
+/// an interface choice, it is a firmware limit.
+pub const MACRO_SLOTS: std::ops::RangeInclusive<usize> = 0..=5;
+
+/// `true` if the key in this slot runs a macro.
+pub fn runs_macro(slot: usize) -> bool {
+    MACRO_SLOTS.contains(&slot)
+}
+
 /// `0x68`-`0x73`. They exist in HID, Linux maps them to `KEY_F13`..`KEY_F24`
 /// and no software uses them out of the box -- the natural "free key" space
 /// (`docs/28`).

@@ -76,7 +76,10 @@ FASE 2 -- andamento
   DONE    0x05 only stores with all THREE banks. One or two: an ACK and nothing. The
           third packet closes the write, like the 3rd channel of the 0x09. The
           0x0D frame is not part of it. Measured in mode 3.
-  MISSING which macro the 0xB4 runs -- it needs the key pressed to see
+  DONE    0xB4 runs the macro in bank 1 of the active mode, and ONLY on a G key.
+          G1 and G2 played the same macro (index 0); Timer and LCtrl played
+          nothing -- and the LCtrl even went mute. The official UI offering
+          macros only on the G keys is a firmware limit (docs/09 7b.2).
   MISSING LED Sleep
   MISSING byte 108 vs byte 119: they are two toggles, which is which is still to be said
   NEVER   Text: the content never goes to the keyboard, only the name.

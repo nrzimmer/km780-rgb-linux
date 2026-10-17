@@ -30,6 +30,11 @@ pub const INFO_SET: u8 = 0x02;
 pub const LED_GET: u8 = 0x89;
 pub const LED_SET: u8 = 0x09;
 pub const MACRO_GET: u8 = 0x85;
+/// Page-indexed database (`docs/09` §7c). The page goes in `buf[2]` -- where
+/// the other commands put the mode -- and the subpage in `buf[3]`.
+pub const BASE_SET: u8 = 0x0A;
+/// Database page where the macro and text names live.
+pub const PAGE_MACRO_NAMES: u8 = 0x09;
 pub const MACRO_SET: u8 = 0x05;
 
 /// Macro banks of a mode. The official app sends all three in sequence
@@ -263,6 +268,37 @@ impl Keyboard {
         let empty = vec![0u8; PKT - HDR];
         for bank in [2u8, 3] {
             self.write_macro_bank(mode, index, bank, &empty)?;
+        }
+        Ok(())
+    }
+
+    /// Writes a macro's name into database `0x0A` page `0x09`.
+    ///
+    /// Mirrors what the official app does right after the three `0x05`
+    /// (`docs/16` §2): the subpage is the macro's index, the payload is the
+    /// name in ASCII, and the following subpages go out zeroed.
+    ///
+    /// It exists because `0xB4` on a key, with a macro stored in bank 1 of the
+    /// active mode, **ran nothing** -- measured. The name is the only thing
+    /// the official app writes alongside that we were not writing.
+    pub fn write_macro_name(&self, index: u8, name: &str) -> Res<()> {
+        let mut payload = vec![0u8; PKT - HDR];
+        let ascii: Vec<u8> = name.bytes().filter(|b| b.is_ascii_graphic() || *b == b' ').collect();
+        if ascii.is_empty() || ascii.len() > 32 {
+            return Err(format!("macro name {name:?} has to be 1..32 ASCII characters"));
+        }
+        payload[..ascii.len()].copy_from_slice(&ascii);
+        self.write(
+            &Self::build(BASE_SET, PAGE_MACRO_NAMES, index, 0, 0, Some(&payload)),
+            WAIT_SIMPLE,
+        )?;
+        // The following subpages zeroed, as in the capture.
+        let empty = vec![0u8; PKT - HDR];
+        for sub in 1..=4u8 {
+            self.write(
+                &Self::build(BASE_SET, PAGE_MACRO_NAMES, sub, 0, 0, Some(&empty)),
+                WAIT_SIMPLE,
+            )?;
         }
         Ok(())
     }
