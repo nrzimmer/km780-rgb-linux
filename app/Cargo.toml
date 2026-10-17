@@ -1,0 +1,23 @@
+[package]
+name = "km780"
+version = "0.1.0"
+edition = "2021"
+description = "Lighting control for the G.SKILL Ripjaws KM780 RGB"
+
+[dependencies]
+eframe = "0.37.0"
+egui = "0.37.0"
+
+# The hidapi backend is chosen per target, and this is NOT a preference:
+# see docs/29. On Linux libusb gets access without root (systemd's uaccess
+# tags the USB node, not hidraw). On Windows the native one is mandatory --
+# libusb there would require swapping the driver for WinUSB, which would stop
+# the keyboard being a keyboard.
+[target.'cfg(target_os = "linux")'.dependencies]
+hidapi = { version = "2.6.7", default-features = false, features = ["linux-static-libusb"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+hidapi = { version = "2.6.7", default-features = false, features = ["windows-native"] }
+
+[profile.release]
+opt-level = 2
