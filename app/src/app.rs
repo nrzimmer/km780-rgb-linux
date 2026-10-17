@@ -5,6 +5,7 @@
 //! editing buffer; the bottom bar says how many keys are dirty.
 
 use std::collections::HashSet;
+use std::sync::mpsc::{self, Receiver, TryRecvError};
 
 use eframe::egui;
 use egui::{Color32, Pos2, Rect, Sense, Stroke, Vec2};
@@ -20,7 +21,9 @@ use crate::slots::{self, NSLOTS};
 ///
 /// `layout.rs` comes in G.SKILL pixels, where a normal key is 19-20 a side.
 /// 1.9 puts the key at ~37 px, readable without a magnifier.
-const SCALE: f32 = 1.9;
+pub const SCALE: f32 = 1.9;
+/// Width of the side panel, in screen pixels.
+pub const PANEL_WIDTH: f32 = 270.0;
 /// Gap between neighbouring keys, in screen pixels.
 const FOLGA: f32 = 2.0;
 
@@ -76,11 +79,34 @@ pub struct App {
     profile_name: String,
     status: String,
     error: Option<String>,
-    show_others: bool,
+    /// The USB operation in flight, if any. Only one at a time: they all come
+    /// from a click, and the button is disabled while one runs.
+    pending: Option<Receiver<Result<Reply, String>>>,
+    /// Copy of the context, so the thread can wake the UI when it finishes.
+    ctx: egui::Context,
+}
+
+/// What a USB task returns to the UI.
+enum Reply {
+    Read {
+        device: String,
+        mode: u8,
+        info: Vec<u8>,
+        colors: Channels,
+    },
+    Written {
+        device: String,
+        mode: u8,
+        n: usize,
+        color_dirty: bool,
+        mode_dirty: bool,
+        remaps: usize,
+        new_payload: State,
+    },
 }
 
 impl App {
-    pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
+    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         let mut app = App {
             device: None,
             mode: 1,
@@ -93,16 +119,23 @@ impl App {
             profile_name: String::new(),
             status: String::new(),
             error: None,
-            show_others: false,
+            pending: None,
+            ctx: cc.egui_ctx.clone(),
         };
         app.refresh();
         app
     }
 
-    /// Opens the keyboard, runs `f`, and **closes**.
+    /// Runs a USB operation **off the UI thread**.
     ///
-    /// The device is not left open between operations, and that is no detail:
-    /// measured on this machine on 2026-10-17, while interface 1 is
+    /// The window must not freeze while the keyboard answers: a `Reload` is
+    /// ~250 ms and an `Apply` ~160 ms, because of the mandatory timing in
+    /// mandatory one from `docs/09` §2 (10 ms per transaction, 20 ms between channels,
+    /// after the third). That time belongs to the protocol, not to our
+    /// implementation, so it cannot be shortened -- only moved out of the way.
+    ///
+    /// Each task **opens and closes** the device. Not a detail: measured on
+    /// this machine on 2026-10-17, while interface 1 is claimed it leaves
     /// `usbhid` and goes to `usbfs` --
     ///
     ///     3-5:1.1 -> usbfs      (app holding)
@@ -110,55 +143,141 @@ impl App {
     ///
     /// and it is precisely interface 1 that declares Mouse, Consumer Control
     /// and the keyboard reports 0x08/0x09 (`docs/29`). Holding the device for
-    /// life of the window would take the user's media keys away while the app
-    /// was open. Opening per operation costs an enumeration of a few
-    /// milliseconds and gives the driver back between clicks.
-    fn with_keyboard<T>(&mut self, f: impl FnOnce(&Keyboard) -> Result<T, String>) -> Option<T> {
-        match Keyboard::open_device() {
-            Ok(kb) => {
-                self.device = Some(kb.description.clone());
-                match f(&kb) {
-                    Ok(v) => {
-                        self.error = None;
-                        Some(v)
-                    }
-                    Err(e) => {
-                        self.error = Some(e);
-                        None
-                    }
-                }
+    /// the window's lifetime would take the media keys away from the user.
+    /// Opening per operation costs an enumeration of a few milliseconds and
+    /// driver entre cliques.
+    fn task(
+        &mut self,
+        f: impl FnOnce(&Keyboard) -> Result<Reply, String> + Send + 'static,
+    ) {
+        if self.pending.is_some() {
+            return; // one is already running; the button is disabled anyway
+        }
+        let (tx, rx) = mpsc::channel();
+        let ctx = self.ctx.clone();
+        std::thread::spawn(move || {
+            let r = Keyboard::open_device().and_then(|kb| f(&kb));
+            let _ = tx.send(r);
+            ctx.request_repaint(); // wake the UI, which may be idle
+        });
+        self.pending = Some(rx);
+    }
+
+    /// Collects the task's result, if it has arrived, and applies it to the state.
+    fn collect(&mut self) {
+        let got = match self.pending.as_ref().map(|rx| rx.try_recv()) {
+            None | Some(Err(TryRecvError::Empty)) => return,
+            Some(Err(TryRecvError::Disconnected)) => {
+                self.pending = None;
+                self.error = Some("the operation ended with no reply".into());
+                return;
             }
+            Some(Ok(r)) => r,
+        };
+        self.pending = None;
+
+        let r = match got {
+            Ok(r) => r,
             Err(e) => {
-                self.device = None;
                 self.error = Some(e);
-                None
+                return;
+            }
+        };
+        self.error = None;
+        match r {
+            Reply::Read { device, mode, info, colors } => {
+                self.device = Some(device);
+                self.mode = mode;
+                self.stored = State {
+                    colors: (0..NSLOTS)
+                        .map(|i| [colors[0][i], colors[1][i], colors[2][i]])
+                        .collect(),
+                    info,
+                };
+                self.buffer = self.stored.clone();
+                self.selection.clear();
+                self.status = format!("stored do mode {mode}");
+            }
+            Reply::Written {
+                device,
+                mode,
+                n,
+                color_dirty,
+                mode_dirty,
+                remaps,
+                new_payload,
+            } => {
+                self.device = Some(device);
+                self.undo = Some(self.stored.clone());
+                self.stored = new_payload;
+                self.status = match (color_dirty, mode_dirty) {
+                    (true, true) => format!("{n} key(s) and mode {mode} written"),
+                    (true, false) => format!("{n} key(s) written in mode {mode}"),
+                    _ => format!("mode {mode} written"),
+                };
+                if remaps > 0 {
+                    self.status += &format!("; {remaps} function(s) stored in the 3 modes");
+                }
             }
         }
     }
 
+    /// Switches the active mode on the keyboard and re-reads.
+    ///
+    /// Writing here does not break "nothing before Apply": `Apply` is about
+    /// **edits**, and switching mode is navigation -- the same as the user
+    /// pressing M1/M2/M3 on the keyboard itself. But since the following read
+    /// replaces the buffer, pending edits would die: that is why the switch is
+    /// refused while anything is pending.
+    fn switch_mode(&mut self, new_payload: u8) {
+        if new_payload == self.mode {
+            return;
+        }
+        if self.pending_changes() > 0 {
+            self.status = format!(
+                "there are {} pending change(s) in mode {} -- Apply or Discard before switching",
+                self.pending_changes(),
+                self.mode
+            );
+            return;
+        }
+        self.status = format!("switching to mode {new_payload}...");
+        self.task(move |kb| {
+            kb.switch_mode(new_payload)?;
+            // Re-read the active one instead of trusting what was written: it is
+            // the same rule 4 of `docs/29`, and here it also confirms it took.
+            let mode = kb.active_mode()?;
+            if mode != new_payload {
+                return Err(format!("mode {new_payload} was asked for, the keyboard stayed on {mode}"));
+            }
+            let info = kb.read_mode(mode)?;
+            let colors = kb.read_colors(mode)?;
+            Ok(Reply::Read {
+                device: kb.description.clone(),
+                mode,
+                info,
+                colors,
+            })
+        });
+    }
+
     /// Reads the whole keyboard: active mode, mode payload and the three channels.
     fn refresh(&mut self) {
-        let r = self.with_keyboard(|kb| -> Result<(u8, Vec<u8>, Channels), String> {
+        self.status = "reading...".into();
+        self.task(|kb| {
             let mode = kb.active_mode()?;
             if !(1..=3).contains(&mode) {
                 return Err(format!("the 0x81 replied mode={mode}, outside 1..3"));
             }
             let info = kb.read_mode(mode)?;
             let colors = kb.read_colors(mode)?;
-            Ok((mode, info, colors))
-        });
-        if let Some((mode, info, colors)) = r {
-            self.mode = mode;
-            self.stored = State {
-                colors: (0..NSLOTS)
-                    .map(|i| [colors[0][i], colors[1][i], colors[2][i]])
-                    .collect(),
+            Ok(Reply::Read {
+                device: kb.description.clone(),
+                mode,
                 info,
-            };
-            self.buffer = self.stored.clone();
-            self.selection.clear();
-            self.status = format!("stored do mode {mode}");
-        }
+                colors,
+            })
+        });
     }
 
     /// How many keys have a color different from the one read.
@@ -195,13 +314,15 @@ impl App {
         let color_dirty = n > 0;
         let mode_dirty = self.mode_dirty();
         let info = self.buffer.info.clone();
-        let mode = self.mode;
-        let remapped = assign::remapped(&self.stored.info, &self.buffer.info);
-        // Re-read the mode before writing: the M1/M2/M3 keys switch the mode
-        // inside the keyboard without telling the host (`docs/29`, rule 4), and writing
-        // color in the wrong mode would paint the wrong profile.
         let stored_info = self.stored.info.clone();
-        let ok = self.with_keyboard(|kb| {
+        let mode = self.mode;
+        let new_payload = self.buffer.clone();
+
+        self.status = "writing...".into();
+        self.task(move |kb| {
+            // Re-read the mode before writing: the M1/M2/M3 keys switch the
+            // mode inside the keyboard without telling the host (`docs/29`, rule 4),
+            // and writing color in the wrong mode would paint the wrong profile.
             let now = kb.active_mode()?;
             if now != mode {
                 return Err(format!(
@@ -218,26 +339,19 @@ impl App {
                 kb.write_colors(mode, &channels)?;
             }
             // The other two modes receive only the function bytes that changed.
-            // changed. The same function the CLI's `--function` uses, which is what
-            // was validated on the wire.
-            assign::propagate(kb, mode, &stored_info, &info)?;
-            Ok(())
+            // The same function the CLI's `--function` uses, which is what was
+            // validated on the wire.
+            let remaps = assign::propagate(kb, mode, &stored_info, &info)?.len();
+            Ok(Reply::Written {
+                device: kb.description.clone(),
+                mode,
+                n,
+                color_dirty,
+                mode_dirty,
+                remaps,
+                new_payload,
+            })
         });
-        if ok.is_some() {
-            self.undo = Some(self.stored.clone());
-            self.stored = self.buffer.clone();
-            self.status = match (color_dirty, mode_dirty) {
-                (true, true) => format!("{n} key(s) and mode {mode} written"),
-                (true, false) => format!("{n} key(s) written in mode {mode}"),
-                _ => format!("mode {mode} written"),
-            };
-            if !remapped.is_empty() {
-                self.status += &format!(
-                    "; {} function(s) stored in the 3 modes",
-                    remapped.len()
-                );
-            }
-        }
     }
 
     fn discard(&mut self) {
@@ -271,22 +385,85 @@ fn cor32(c: [u8; 3]) -> Color32 {
 
 impl eframe::App for App {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        self.collect();
+        let busy = self.pending.is_some();
+
         egui::Panel::top("topo").show(ui, |ui| {
             ui.horizontal(|ui| {
                 match &self.device {
                     Some(name) => {
                         ui.strong(name);
-                        ui.label(format!("mode {}", self.mode));
-                        ui.label(format!("brightness {}", self.stored.brightness()));
-                        ui.label(format!("effect: {}", effects::name(self.stored.effect())));
                     }
                     None => {
                         ui.colored_label(Color32::from_rgb(220, 120, 80), "no keyboard");
                     }
                 }
                 ui.separator();
-                if ui.button("Reler").clicked() {
+                if ui
+                    .add_enabled(!busy, egui::Button::new("Reler"))
+                    .clicked()
+                {
                     self.refresh();
+                }
+                if busy {
+                    ui.spinner();
+                }
+            });
+
+            ui.horizontal(|ui| {
+                // The keyboard's three modes. There are three and they are its own: the
+                // M1/M2/M3 keys do the same from outside (`docs/09` §4).
+                ui.label("mode:");
+                for m in 1..=3u8 {
+                    let selected = self.mode == m;
+                    if ui
+                        .add_enabled(
+                            !busy,
+                            egui::Button::new(format!("M{m}")).selected(selected),
+                        )
+                        .clicked()
+                    {
+                        self.switch_mode(m);
+                    }
+                }
+
+                ui.separator();
+                // Brightness is five steps, 0..4 -- the same ones the keyboard's
+                // brightness key walks through. It is not a percentage.
+                let mut brightness = self.buffer.brightness();
+                let has_info = self.buffer.has_info();
+                if ui
+                    .add_enabled(
+                        has_info && !busy,
+                        egui::Slider::new(&mut brightness, 0..=4)
+                            .show_value(false)
+                            .text("brightness"),
+                    )
+                    .changed()
+                {
+                    self.buffer.info[proto::OFF_BRIGHTNESS] = brightness;
+                }
+
+                ui.separator();
+                let current = self.buffer.effect();
+                let mut chosen = current;
+                egui::ComboBox::from_label("effect")
+                    .selected_text(effects::name(current))
+                    .show_ui(ui, |ui| {
+                        for (v, name, _) in effects::CATALOG {
+                            ui.selectable_value(&mut chosen, *v, *name);
+                        }
+                    });
+                if chosen != current && has_info {
+                    self.buffer.info[proto::OFF_EFFECT] = chosen;
+                }
+                // Para Ripple, Sonic, Changeling e Rain o app so troca o
+                // byte 10: the animation comes out with the gradient already stored on the
+                // keyboard. Without this warning it looks as if the color picker stopped
+                // working.
+                let note = effects::note(chosen);
+                if !note.is_empty() {
+                    ui.small(note);
                 }
             });
             if self.buffer.effect() != 0 {
@@ -308,7 +485,7 @@ impl eframe::App for App {
         egui::Panel::bottom("barra").show(ui, |ui| {
             let dirty_keys = self.pending_changes();
             ui.horizontal(|ui| {
-                let can = dirty_keys > 0;
+                let can = dirty_keys > 0 && !busy;
                 if ui.add_enabled(can, egui::Button::new("Apply")).clicked() {
                     self.apply();
                 }
@@ -317,7 +494,7 @@ impl eframe::App for App {
                 }
                 if ui
                     .add_enabled(
-                        self.undo.is_some(),
+                        self.undo.is_some() && !busy,
                         egui::Button::new("Undo last apply"),
                     )
                     .clicked()
@@ -333,12 +510,25 @@ impl eframe::App for App {
                         format!("{dirty_keys} key(s) pending"),
                     );
                 }
+                if self.mode_dirty() {
+                    ui.separator();
+                    ui.colored_label(
+                        Color32::from_rgb(240, 200, 100),
+                        format!(
+                            "brightness {} -> {}, effect {} -> {}",
+                            self.stored.brightness(),
+                            self.buffer.brightness(),
+                            self.stored.effect(),
+                            self.buffer.effect()
+                        ),
+                    );
+                }
                 ui.separator();
                 ui.label(&self.status);
             });
         });
 
-        egui::Panel::right("side").default_size(240.0).show(ui, |ui| {
+        egui::Panel::right("side").default_size(PANEL_WIDTH).show(ui, |ui| {
             ui.heading("Color");
             let mut c = cor32(self.color);
             if egui::color_picker::color_edit_button_srgba(
@@ -369,6 +559,10 @@ impl eframe::App for App {
 
             ui.add_space(8.0);
             ui.horizontal(|ui| {
+                // Only the keys that are drawn. The 22 slots with no key are left
+                // out on purpose: the button says "All" and the user expects
+                // the keyboard they are looking at. For the others, the CLI accepts the
+                // numero do slot -- ver `docs/30`.
                 if ui.button("Tudo").clicked() {
                     self.selection = layout::KEYS
                         .iter()
@@ -381,127 +575,41 @@ impl eframe::App for App {
             });
             ui.label(format!("{} selected(s)", self.selection.len()));
 
-            ui.add_space(12.0);
-            ui.separator();
-            ui.heading("Mode");
-            if self.buffer.has_info() {
-                self.mode_controls(ui);
-            } else {
-                ui.label("no mode payload read");
-            }
-
-            ui.add_space(12.0);
-            ui.separator();
-            ui.heading("Key function");
-            if self.buffer.has_info() {
-                self.function_controls(ui);
-            } else {
-                ui.label("no mode payload read");
-            }
-
-            ui.add_space(12.0);
-            ui.separator();
-            ui.heading("Profiles");
-            self.profile_controls(ui);
-
-            ui.add_space(12.0);
-            ui.collapsing("Outros slots", |ui| {
-                ui.label(
-                    "Named slots the drawing does not place: international \
-                     keys, codes with no key in the US/ABNT layout, and the \
-                     NumSep.",
-                );
-                self.show_others = true;
-                let placed: HashSet<usize> = layout::KEYS
-                    .iter()
-                    .filter_map(|t| slots::slot_of(t.name))
-                    .collect();
-                for (i, name) in slots::SLOTS.iter().enumerate() {
-                    if placed.contains(&i) {
-                        continue;
-                    }
-                    let sel = self.selection.contains(&i);
-                    let no_key = slots::NO_KEY.contains(&i);
-                    let label = if no_key {
-                        format!("{i:3} {name}  (no physical key)")
-                    } else {
-                        format!("{i:3} {name}")
-                    };
-                    if ui.selectable_label(sel, label).clicked() {
-                        if sel {
-                            self.selection.remove(&i);
-                        } else {
-                            self.selection.insert(i);
-                        }
-                    }
-                }
-            });
-
-            ui.add_space(12.0);
-            ui.small(
-                "Click selects. Ctrl or Shift adds to the selection. Dragging \
-                 over the keys also adds.",
-            );
-            ui.small(
-                "This unit has LEDs with the R component stuck (docs/27 \
-                 §10): check the color by the re-read, not by eye.",
-            );
         });
 
         egui::CentralPanel::default().show(ui, |ui| {
-            egui::ScrollArea::both().show(ui, |ui| self.draw_keyboard(ui));
+            self.draw_keyboard(ui);
+
+            // What is not color lives **below the keyboard**, in columns: there is
+            // width to spare there and the side panel stays short. The color
+            // picker stays beside it, which is where it serves best -- it sits
+            // close to the keys it will paint.
+            ui.add_space(8.0);
+            ui.separator();
+            ui.columns(2, |col| {
+                col[0].heading("Key function");
+                if self.buffer.has_info() {
+                    self.function_controls(&mut col[0]);
+                } else {
+                    col[0].label("no mode payload read");
+                }
+
+                col[1].heading("Profiles");
+                self.profile_controls(&mut col[1]);
+            });
+
+            ui.add_space(6.0);
+            ui.small(
+                "Click selects. Ctrl or Shift adds to the selection. Dragging \
+                 over the keys also adds.  This unit has LEDs with the \
+                 R component stuck (docs/27 §10): check the color by the \
+                 re-read, not by eye.",
+            );
         });
     }
 }
 
 impl App {
-    /// Brightness and effect: bytes 11 and 10 of the mode payload.
-    ///
-    /// Both are **read-change-write** -- they edit one byte of the payload that
-    /// came from the 0x82 and the rest travels intact. Like everything in the app, nothing goes to
-    /// the keyboard before `Apply`.
-    fn mode_controls(&mut self, ui: &mut egui::Ui) {
-        let mut brightness = self.buffer.brightness();
-        // Brightness is 0..4 (`docs/09`). It is not a percentage: it is five steps,
-        // the same ones the keyboard's brightness key walks through.
-        if ui
-            .add(egui::Slider::new(&mut brightness, 0..=4).text("brightness"))
-            .changed()
-        {
-            self.buffer.info[proto::OFF_BRIGHTNESS] = brightness;
-        }
-
-        let current = self.buffer.effect();
-        let mut chosen = current;
-        egui::ComboBox::from_label("effect")
-            .selected_text(effects::name(current))
-            .show_ui(ui, |ui| {
-                for (v, name, _) in effects::CATALOG {
-                    ui.selectable_value(&mut chosen, *v, *name);
-                }
-            });
-        if chosen != current {
-            self.buffer.info[proto::OFF_EFFECT] = chosen;
-        }
-        let note = effects::note(chosen);
-        if !note.is_empty() {
-            ui.small(note);
-        }
-
-        if self.mode_dirty() {
-            ui.colored_label(
-                Color32::from_rgb(240, 200, 100),
-                format!(
-                    "mode pending: brightness {} -> {}, effect {} -> {}",
-                    self.stored.brightness(),
-                    self.buffer.brightness(),
-                    self.stored.effect(),
-                    self.buffer.effect()
-                ),
-            );
-        }
-    }
-
     /// Key remapping: bytes 120-263 of the mode payload.
     ///
     /// It works for any of the 132 keys, and the remap lives in the keyboard --
@@ -607,14 +715,32 @@ impl App {
             }
         });
 
+        // A combo, and not one row per profile: the window does not scroll, so a
+        // panel that grows with the number of files would end up cut off.
         let list = profiles::list();
         if list.is_empty() {
             ui.small("no profile saved yet");
-        }
-        for name in list {
+        } else {
             ui.horizontal(|ui| {
-                ui.label(&name);
-                if ui.small_button("Carregar").clicked() {
+                let mut chosen = self.profile_name.clone();
+                egui::ComboBox::from_id_salt("profiles")
+                    .selected_text(if chosen.is_empty() {
+                        "pick one".to_string()
+                    } else {
+                        chosen.clone()
+                    })
+                    .width(140.0)
+                    .show_ui(ui, |ui| {
+                        for n in &list {
+                            ui.selectable_value(&mut chosen, n.clone(), n);
+                        }
+                    });
+                if chosen != self.profile_name {
+                    self.profile_name = chosen;
+                }
+                let name = self.profile_name.clone();
+                let can = list.contains(&name);
+                if ui.add_enabled(can, egui::Button::new("Carregar")).clicked() {
                     match profiles::load(&name) {
                         Ok(p) => {
                             self.buffer.colors = p.colors;
@@ -622,7 +748,6 @@ impl App {
                                 self.buffer.info[proto::OFF_BRIGHTNESS] = p.brightness;
                                 self.buffer.info[proto::OFF_EFFECT] = p.effect;
                             }
-                            self.profile_name = name.clone();
                             self.status = format!(
                                 "profile \"{name}\" loaded into the buffer -- \
                                  nothing was written; use Apply"

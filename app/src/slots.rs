@@ -46,7 +46,17 @@ pub static SLOTS: [&str; 132] = [
 /// See `docs/23` §6: "dark" does not mean "no key".
 pub static NO_KEY: [usize; 5] = [35, 80, 85, 91, 129];
 
-/// Slot of a key by name, as in `docs/10-key-map.md`.
+/// Slot of a key by name, as in `docs/10-key-map.md`, **or by number**.
+///
+/// The number matters: 22 of the 144 slots have no key in the drawing (10
+/// named without a physical key on the US/ABNT layout, plus the 132-143 tail
+/// that does not even have a name). The GUI does not show them, but they
+/// exist in the payload and on this keyboard some of them are lit -- the
+/// number is how to reach them from the CLI. See `docs/30`.
 pub fn slot_of(name: &str) -> Option<usize> {
-    SLOTS.iter().position(|s| s.eq_ignore_ascii_case(name))
+    let t = name.trim();
+    if let Ok(n) = t.parse::<usize>() {
+        return (n < NSLOTS).then_some(n);
+    }
+    SLOTS.iter().position(|s| s.eq_ignore_ascii_case(t))
 }

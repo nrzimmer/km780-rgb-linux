@@ -77,7 +77,18 @@ fn paint_cmd(keys: &str, color: &str) {
 
     println!("mode {mode}; previous color of the slots touched:");
     for &i in &indices {
-        println!("  slot {i:3}  #{:02X}{:02X}{:02X}", channels[0][i], channels[1][i], channels[2][i]);
+        // A warning, not a refusal: painting a slot with no key is legitimate
+        // -- several of them are lit on this keyboard -- but whoever asked by
+        // number deserves to know they will see nothing on a US/ABNT layout.
+        let note = if slots::NO_KEY.contains(&i) {
+            "   (no physical key on the US/ABNT layout)"
+        } else {
+            ""
+        };
+        println!(
+            "  slot {i:3}  #{:02X}{:02X}{:02X}{note}",
+            channels[0][i], channels[1][i], channels[2][i]
+        );
     }
     for &i in &indices {
         channels[0][i] = target[0];
@@ -224,7 +235,7 @@ fn main() -> eframe::Result<()> {
     }
 
     let argv: Vec<String> = std::env::args().collect();
-    if let Some(p) = argv.iter().position(|a| a == "--paint") {
+    if let Some(p) = argv.iter().position(|a| a == "--paint_cmd") {
         paint_cmd(&argv[p + 1], &argv[p + 2]);
         return Ok(());
     }
@@ -242,10 +253,25 @@ fn main() -> eframe::Result<()> {
         return Ok(());
     }
 
+    // The window **does not scroll**: it is born the size of its content.
+    //
+    // The width comes out of the layout itself -- the keyboard drawing in the
+    // manufacturer's pixels, times the scale, plus the side panel. The height
+    // is the side panel's, which is taller than the keyboard. Since there is
+    // no scrolling, the minimum is the same as the default: shrinking would only crop.
+    let (_, _, w, _) = layout::extent();
+    let width = w * app::SCALE + app::PANEL_WIDTH + 30.0;
+    // Height: the top bar, the drawn keyboard, the bottom columns and the
+    // apply bar. With room to spare for the function section, which grows when
+    // a key is selected.
+    let height = 640.0;
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
-            .with_inner_size([1180.0, 560.0])
-            .with_min_inner_size([760.0, 420.0]),
+            // app_id becomes WM_CLASS on X11, which is how i3 identifies the
+            // window for the float rule.
+            .with_app_id("km780")
+            .with_inner_size([width, height])
+            .with_min_inner_size([width, height]),
         ..Default::default()
     };
     eframe::run_native(

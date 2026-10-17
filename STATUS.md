@@ -15,24 +15,88 @@ a prior portrait.
 | | |
 |---|---|
 | Protocol specification | `docs/09-protocol.md`, canonical |
-| Visual view | `docs/protocol.html` — opens in a browser, or claude.ai/artifact/K9mu4VENac49xSE2cR3YXM (v11, up to date with `docs/27`) |
+| Visual view | `docs/protocol.html` — opens in a browser, or claude.ai/artifact/K9mu4VENac49xSE2cR3YXM (v12, up to date with `docs/30`; the published artifact is still v11) |
 | Color tooling | `tools/km780ctl.py` — **exercised end to end on hardware** |
 | Hardware-free tests | `tools/test_km780.py` — 24, all passing |
 
-## IN PROGRESS: Rust app with a GUI
+## DONE: the Rust GUI app, in `app/`
 
 The user asked for a real app — GUI, Rust, buildable for Windows, to replace
-G.SKILL's. **The decisions are made and documented in
-`docs/29-app-rust.md`; not a line of code written yet.**
+G.SKILL's. **It is written, running and validated on hardware.**
+`docs/29` was the plan; **`docs/30` is what happened**, including three things
+the plan got wrong.
 
-Summary: egui/eframe 0.37, hidapi 2.6.7 with the `linux-static-libusb` backend
-(not hidraw, because `uaccess` gives an ACL to the USB node but not to
-`hidraw` — measured). v1 = read + static color, with **batch editing and an
-explicit `Apply`**: nothing goes to the keyboard on every click. On Windows the
-backend is `windows-native`, not libusb — libusb there would mean swapping the
-driver for WinUSB and would stop the keyboard being a keyboard.
+    cargo build --release                                  # Linux
+    cargo build --release --target x86_64-pc-windows-gnu   # the .exe
 
-Start by reading `docs/29`.
+It does: reads mode/brightness/effect/colors; draws the keyboard in the
+manufacturer's layout; edits color, brightness, effect and key function in a
+local buffer; `Apply` writes, `Discard` re-reads, `Undo` goes back. Profiles
+saved in `~/.config/km780/profiles/`. All four items of `docs/29`'s "what comes
+after" are done.
+
+Without the GUI, for diagnostics and scripting:
+
+    km780 --probe              reads everything and prints it
+    km780 --brightness 2       read-change-write + diff of the whole payload
+    km780 --effect 4           same, byte 10
+    km780 --function Timer=f13 remaps in all 3 modes, recording the previous value
+
+The keyboard layout does **not** come from `physical-matrix.json` (which is the
+electrical matrix): it comes from the official app's `KeyboardButtons.xml`, in
+`external/gds/`. 122 keys, the same number `docs/25` counted in the matrix.
+
+Start by reading `docs/30`.
+
+### What the app does NOT do yet
+
+In order of size. Nothing here is blocked by missing reverse engineering — what
+is missing is code, except where marked.
+
+**Macros — nothing done.** This is the biggest block. The protocol is
+documented (`0x05` = content, 3-byte records `[flag][delay ×10 ms][HID
+usage]`, with an extended field in the flag's nibble for delays up to ~41 s;
+the name goes to the `0x0A` base, page `0x09`; the key receives the code
+`0xB4`). The app does not write, edit, assign or list any macro. Recording
+with the MR key happens inside the keyboard and needs no host — but editing
+what was recorded does.
+
+**Editing effects — only the on/off is done.** Today the app changes byte 10 and
+that is it; the animation comes out with whatever is already stored. Missing:
+
+- **duration** (bytes 15–71, the 4th of each 4-byte record) and **direction**
+  (bytes 12–14). Documented, it is read-change-write.
+- **the per-effect gradients** — `0x0B` (Ripple/Sonic), `0x0E` (Changeling,
+  Checkpoint, Cycle), `0x0F`/`0x12` (Rain), `0x15` (Changeling). The 71-byte
+  structure per slot is confirmed (`docs/27`: stop count, scalar, 3 channels ×
+  23 bytes, quantized to multiples of 4). **Mind `buf[4]`**: these commands put
+  the channel in `buf[4]`, not in `buf[3]` like `0x09`.
+- **per-key data of the effects** — this one does have a reverse-engineering
+  gap: `START-HERE.md` records that the official UI only applies a global
+  effect, so it cannot be exercised through it. `[?]`
+
+**Other mode fields, all documented and none in the app:**
+
+- **polling rate**, byte 8 (1/2/4/8 ms = 1000/500/250/125 Hz), `docs/14`
+- **the three toggles** in bytes 107, 108 and 109 — 109 is the Windows key
+  lock, confirmed on the hardware (`docs/23` §8). Which is which in the other
+  two is still missing. `[?]` partial
+- **Macro and Text as a key function** (`0xB4`, `0xB8`): the app's remapping
+  offers only F13–F24 and raw hex. Text, by the way, **does not work** — the
+  content never reaches the keyboard, only the name, so a key with Text only
+  works with the G.SKILL app running.
+- **LED Sleep** — never identified. `[?]`
+
+**App quality, not protocol:**
+
+- the 12 nameless tail slots (132–143) are not reachable by name even from the
+  CLI, only by number
+- no command line for profiles (only the GUI saves and loads)
+- no packaging, no systemd unit to restore the color at boot
+
+**And the Windows block**, which needs a Windows machine: which device path to
+open among the several top-level collections, and whether Windows allows opening
+the collection with read access. See `docs/30`.
 
 ## `pyusb` is in the venv, not in the system
 
@@ -68,11 +132,12 @@ in `test_km780.py`'s simulator.
 
 The declared goal is met. Two directions, neither blocking the other:
 
-- **Usability** — `--profile` with saved themes, restoring at boot (a systemd
-  user unit), packaging. Needs no more reverse engineering.
+- **Usability** — saved themes **done** (the app's profiles, `docs/30`). Missing:
+  restoring at boot (a systemd user unit) and packaging. Needs no more reverse
+  engineering.
   Already done here: **remapping a key in the keyboard's memory** (`docs/28`),
   which solves "give a key a function with no service". Timer is on F13 in all
-  modes.
+  three modes.
 - **Protocol** — the gaps in the table below. `FUN_100d5060` has already been
   decompiled (`docs/27`): it closed `0x0E`/`0x0F` and revealed a ninth effect,
   **Checkpoint** (byte 10 = `8`), which the v2.04 UI did not offer. Testing it on

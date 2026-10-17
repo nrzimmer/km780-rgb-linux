@@ -225,6 +225,48 @@ done**: brightness, effects, key remapping and saved profiles. What is
 left of that document is only the Windows `[?]` block, which needs a
 Windows machine.
 
+## The 22 slots the drawing does not show  [C]
+
+The color command addresses **144 slots**. Of those, 132 have a name in the factory
+table (`docs/10`), and **122** are physical keys on this keyboard -- the ones the
+drawing shows. That leaves 22, and it is worth knowing which:
+
+**10 named, with no key in the US/ABNT layout:**
+
+    35 INTL8b   80 INTL88   85 INTL87   91 INTL89   129 INTL85
+        ^ the five with HID in the international range 0x85-0x8b
+
+    16 \|   32 VK25   68 VK61   71 VK28   88 VK22
+        ^ the extra ISO key and four slots with a virtual-key but no key here
+
+**12 with no name at all:** the payload's `132`-`143` tail. They came back
+zeroed in every read; probably padding.
+
+**They are not inert.** A profile's portrait caught `16`, `32`, `68`, `71` and
+`88` at `FF0000` while the whole keyboard was green -- they are precisely the
+five `km780lib.py` notes as "once on the no-key list", lit ever since the
+slot-by-slot identification sessions of `docs/26`. "Dark" never meant "no key"
+(`docs/23` §6), and this is the proof from the other side: there is a slot with
+no key that is lit.
+
+### Why they do not appear in the GUI
+
+An earlier version listed them in a column below the keyboard. It went: it took
+a third of the usable area for something that, in normal use, is of no use. The
+documentation is here; access is through the CLI, which accepts **the slot
+lugar do nome:
+
+    km780 --pinta 85,F4 00ff00
+      slot  85  #000000   (no physical key on the US/ABNT layout)
+      slot  36  #00FB2F
+
+The warning is a warning, not a refusal: painting a slot with no key is
+legitimate, and several are lit. Whoever asked by number simply deserves to know
+layout US/ABNT.
+
+The GUI's `All` button selects **only the drawn keys**, on purpose: the button
+says "All" and the user expects the keyboard they are looking at.
+
 ## Profiles in a file of ours  [C]
 
 Item 4 of `docs/29`, and the "our own" is the point: the keyboard already has three modes,

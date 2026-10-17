@@ -221,6 +221,7 @@ footer{margin-top:4rem;padding-top:1.2rem;border-top:1px solid var(--rule);
   <span><b>read</b> on the keyboard, not only in the capture</span>
       <span><b>144</b> LED slots, 132 used</span>
       <span><b>3</b> modes</span>
+      <span><b>app</b> in Rust, in <code>app/</code></span>
     </div>
     <div class="legend" style="margin-top:1.1rem">
       <span><span class="conf c-c">C</span> confirmed on hardware or in the binary</span>
@@ -514,6 +515,32 @@ o HID usage e o virtual-key code.</p>
 
 <div class="scroll"><div class="kb" id="kb" style="--ku:2.35rem"></div></div>
 <div class="readout" id="readout" aria-live="polite"></div>
+
+<div class="note">
+  <div class="hd">The physical layout came from the manufacturer <span class="conf c-c">C</span></div>
+  <p><code>physical-matrix.json</code> is the <b>electrical</b> scan matrix
+  and is no use for drawing the keyboard — the wiring does not follow physical
+  adjacency. The real position was in the official software's package:
+  <code>external/gds/…/KeyboardButtons.xml</code> carries each key with a
+  <code>&lt;POS&gt;</code> in x, y, width and height. There are <b>110</b> keys, the
+  104 from <code>&lt;KEY_NUM&gt;</code> plus the six G keys.</p>
+  <p>The 12 that are missing — MR, M1–M3, the WinLock/Brightness/Timer trio and
+  the five multimedia ones — are not there because the official app does not let
+  you reassign them. They were measured from the photo in
+  <code>Keyboard Wireframe_01232015v3.pdf</code>, in the same package.</p>
+  <p><b>110 + 12 = 122</b>, and 122 is exactly how many keys the matrix sweep
+  counted on the hardware, by a route unrelated to this one. Two sources that
+  never talk to each other on the same number.</p>
+</div>
+
+<div class="note">
+  <div class="hd">Slot 126 is the numeric keypad's Enter <span class="conf c-c">C</span></div>
+  <p>The factory table calls it <code>NumSep</code> (from
+  <code>VK_SEPARATOR</code>) and the matrix map calls it <code>NumEnter</code>;
+  it was not obvious they were the same key. They are: the manufacturer's XML
+  names the entry <code>NUM_ENTER&nbsp;&nbsp;VK_SEPARATOR</code>, and the
+  <b>slot's HID is <code>0x58</code></b> — Keypad ENTER. Three sources, one key.</p>
+</div>
 
 <h3>The 18 special keys, slot by slot</h3>
 <div class="col">
@@ -1135,7 +1162,7 @@ left, and why.</p>
 <tr><td class="m">bytes 72–107</td><td>partial: 75–77 = number of color stops. Same method</td></tr>
 <tr><td class="m">the 02 04 M 04 … event</td><td>6 occurrences, meaning unknown. Listen to EP <code>0x83</code> while working the keyboard.</td></tr>
 <tr><td>LED Sleep</td><td>the control was never captured</td></tr>
-<tr><td class="m">slots 16, 32, 68, 71, 88</td><td>they were once listed as having no physical key; the evidence did not hold. They do have a real virtual-key. <b>Settleable by experiment</b> — paint and look</td></tr>
+<tr><td class="m">slots 16, 32, 68, 71, 88</td><td><b>Closed.</b> They have no physical key on this keyboard: the manufacturer's layout covers 122 keys and none of them is these slots. And they are not inert — a profile portrait caught all five at <code>FF0000</code> with the whole keyboard green, a leftover from the slot-by-slot identification rounds. "Dark" never meant "no key"; here it is the opposite, a slot with no key that is lit <span class="conf c-c">C</span></td></tr>
 <tr><td class="m">why there are 3 effect<br>slots per mode</td><td>all three hold identical data within a mode; they are not three different effects</td></tr>
 </tbody>
 </table>
@@ -1182,6 +1209,9 @@ left, and why.</p>
   them, not the specification.</div>
   <div style="margin-top:.4rem">Captures in <b>captures/</b> · full map of
   slots in <b>docs/10-key-map.md</b> · km780-rgb-linux</div>
+  <div style="margin-top:.4rem">The app that uses this protocol is in
+  <b>app/</b> (Rust, egui); what it does, what it does not do and what was
+  measured on it is in <b>docs/30-app-v1.md</b>.</div>
 </footer>
 </div>
 

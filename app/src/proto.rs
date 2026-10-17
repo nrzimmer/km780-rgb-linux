@@ -23,6 +23,7 @@ pub const HDR: usize = 8;
 pub const REPORT_ID: u8 = 0x07;
 
 pub const MODE_GET: u8 = 0x81;
+pub const MODE_SET: u8 = 0x01;
 pub const INFO_GET: u8 = 0x82;
 #[allow(dead_code)]
 pub const INFO_SET: u8 = 0x02;
@@ -155,6 +156,20 @@ impl Keyboard {
     pub fn active_mode(&self) -> Res<u8> {
         let d = self.read(&Self::build(MODE_GET, 0, 0, 0, 0, None), WAIT_SIMPLE)?;
         Ok(d[2])
+    }
+
+    /// Switches the active mode -- the same as pressing M1/M2/M3 on the keyboard.
+    ///
+    /// `07 01 <mode> 00 ...`, the rest zeroed (`docs/09` §4). It is the only
+    /// place in the app where the packet is built from scratch instead of
+    /// read-change-write, and that is fine: the command **is** just the mode
+    /// number, the following 261 bytes are zero by specification, and there is
+    /// no unknown field to preserve.
+    pub fn switch_mode(&self, mode: u8) -> Res<()> {
+        if !(1..=3).contains(&mode) {
+            return Err(format!("mode {mode} outside 1..3"));
+        }
+        self.write(&Self::build(MODE_SET, mode, 0, 0, 0, None), WAIT_READ)
     }
 
     /// The 264 bytes of the mode payload.
