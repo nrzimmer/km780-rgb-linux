@@ -16,3 +16,10 @@ snap-*.json
 # Windows session transcript: 22 MB, it is scrollback, not evidence.
 # Stays on disk but out of the index.
 sessions/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# experiment-log backup
+backup-exp.json

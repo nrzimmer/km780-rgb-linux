@@ -47,6 +47,18 @@ goal of this project.
 | Event channel `0x83` (ACK, key, brightness) | **mapped** — `docs/22` §2 |
 | Visual view of the protocol | `docs/protocol.html` |
 
+## Using it
+
+    tools/km780ctl.py info                 current state, no writing
+    tools/km780ctl.py set F5=ff0000 A=blue paints keys
+    tools/km780ctl.py brightness 4         intensity 0-4
+    tools/km780ctl.py backup mine.json     save everything before playing
+
+`-n` shows what it would do without writing. `tools/test_km780.py` validates
+the logic against a simulated keyboard — it does not replace running on the
+device, but it guarantees the packet goes out with the right layout and that
+read-change-write preserves the unknown fields.
+
 ## Order of work
 
 Document the protocol, field by field, **before** writing the tool.
@@ -87,8 +99,11 @@ command answer in a real capture. Recovery exists and is documented in
 ## Layout
 
     docs/      documentation, one per line of work
-    tools/     our code (km780.py: transport + GET commands, read-only;
-               extract.sh/view.sh: decode the USBPcap captures)
+    tools/     our code. km780lib.py is the shared transport;
+               km780ctl.py is the color tool; km780exp.py is the
+               experiment bench; test_km780.py runs without hardware.
+               extract.sh/view.sh decode the USBPcap captures, and
+               vary.py/cmdsites.py are the capture and PE analyzers.
     captures/  the 11 USB captures of the vendor software: .pcapng (raw) and
                .txt (decoded payloads). Versioned and **to keep until the
                protocol is fully documented** — they are the evidence, and
