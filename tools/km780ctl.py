@@ -26,9 +26,11 @@ import sys, json
 sys.path.insert(0, __file__.rsplit('/', 1)[0])
 import km780lib as K
 
+# 8 (Checkpoint) is reactive to key presses, confirmed on hardware -- docs/27 §10.
+# 3 (Sonic) is internally called Reactive, profile .rea -- docs/27 §7.
 EFFECTS = {0: 'none (static)', 1: 'Wave', 2: 'Ripple', 3: 'Sonic',
-           4: 'Breathing', 7: 'Changeling', 8: 'Checkpoint', 9: 'Cycle',
-           10: 'Rain'}
+           4: 'Breathing', 7: 'Changeling', 8: 'Checkpoint (reactive)',
+           9: 'Cycle', 10: 'Rain'}
 POLLING = {1: '1000 Hz', 2: '500 Hz', 4: '250 Hz', 8: '125 Hz'}
 
 def colors_per_slot(channels):

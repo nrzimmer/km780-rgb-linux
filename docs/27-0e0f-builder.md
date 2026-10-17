@@ -90,7 +90,7 @@ In the same builder, the branch for effects 1 and 2 writes `uStack_e0f = 8`. So
 code, varying only the command byte per effect family. It confirms the reading
 in `docs/22` §4 ("they are siblings of `0x08`") and the table in `docs/15` §4.
 
-## 7. The DLL's effect catalog: an effect the UI never showed  [C]
+## 7. The DLL's effect catalog: each one's internal name  [C]
 
 The function's first half dispatches by effect index and picks the profile
 file's extension. The index is the **same** as byte 10 of the mode payload
@@ -102,24 +102,28 @@ file's extension. The index is the **same** as byte 10 of the mode payload
 | 2 | `.rip` | Ripple | `0x08`, and `0x0B` x3 |
 | 3 | `.rea` | **Sonic** (internally: *Reactive*) | — |
 | 4 | `.bre` | Breathing | — |
-| 5 | — | not in the function | — |
-| 6 | — | not in the function | — |
+| 5 | — | does not exist in the function | — |
+| 6 | — | does not exist in the function | — |
 | 7 | `.chg` | Changeling | `0x0E`, and `0x15` x3 |
-| 8 | `.chk` | **Checkpoint** | `0x0E` |
+| 8 | `.chk` | Checkpoint | `0x0E` |
 | 9 | `.cycle` | Cycle | `0x0E` |
 | 10 | `.rain` | Rain | `0x0F`, and `0x12` x3 |
 
-Two findings:
+Two findings, and a correction to what I had written here before:
 
-- **Index 8 is "Checkpoint"**, and `docs/15` §2 records that `0x08` *"did not
-  appear"* in the UI during the capture of the 8 effects. The name comes from
-  the function's `.chk` crossed with the UTF-16 string
-  `Checkpoint`/`CHECKPOINT` in `.rdata` (next to `WAVE`, `RIPPLE`,
-  `CHANGELING`, `CYCLE`, `RAIN`). It is a ninth effect, one the hardware may
-  accept in byte 10 and the v2.04 UI did not offer.
 - **Index 3 is `.rea`, for *Reactive***, but the UI calls it **Sonic**. The DLL
   also has `REACTIVER` in its strings. It is a UI label diverging from the
   internal name, not two effects.
+- Each effect's profile extension closes `docs/16` §4's catalog from the code
+  side, with the **same index** as byte 10.
+
+> **Correction.** An earlier version of this section said index 8 was an effect
+> "the UI did not offer", resting on `docs/15` §2 recording that `0x08` *"did
+> not appear"*. That is wrong: `docs/15` speaks of **one** capture,
+> `04-effects`, which walked the 8 effects in the list. Checkpoint was captured
+> in `05-macros` and has been documented in `docs/16` §4 ever since, including
+> the detail that it uses "Transition Point" in number of keys instead of
+> duration/direction. There is no hidden effect.
 
 `5` and `6` have no branch in the function — consistent with their never
 appearing in a capture. They probably do not exist.
@@ -173,25 +177,30 @@ This predicts which effects fire three helper packets. Against the table in
 **Seven out of seven, including the three negatives.** And the "x3" is not a
 coincidence with the R/G/B channels: it is the loop's count.
 
-## 10. Checkpoint on the hardware: evidence against  [I]
+## 10. Checkpoint on the hardware, and how idling deceives  [C]
 
-Test with `tools/km780effect.py 2 8 5 6`, mode 2 (static, brightness 4):
+Test with `tools/km780effect.py`, mode 2, brightness 4.
 
-| byte 10 | what the keyboard did |
-|---|---|
-| `8` (Checkpoint) | all red |
-| `5` (no branch in the builder) | all red |
-| `6` (no branch in the builder) | dark |
+| byte 10 | idle | pressing a key |
+|---|---|---|
+| `1` (Wave) | animates | control: animated normally |
+| `8` (Checkpoint) | all red | **changes with the key pressed** |
+| `5` | all red | not tested under a key |
+| `6` | dark | not tested under a key |
 
-The firmware **does tell** the three values apart — `6` goes dark, the other
-two do not — so it is not a single "default" for the unknown. But `8` did
-exactly the same as `5`, and `5` is precisely an index that does not exist in
-the app. That weighs against Checkpoint being a live effect on FW 77.
+Checkpoint is reactive: "all red" is its **idle state**. This **corroborates,
+by an independent path**, what `docs/16` §4 extracted from the official UI —
+that its parameter is "Transition Point, in number of keys pressed". The UI
+said the effect counts keys; the hardware shows the effect reacting to keys.
 
-Caveat: mode 2 was static, so its effect slots are probably zeroed, and a
-legitimate effect might not animate there either. **The control is missing**:
-run Wave (index 1) on the same mode. If Wave animates and `8` does not, that
-settles it.
+Wave on the same mode rules out the hypothesis that mode 2's zeroed effect
+slots were getting in the way. So `5` stays `[?]`: it was judged **while
+idle**, where it looked the same as `8` — and `8` while idle also looks inert.
+**Idling does not distinguish a reactive effect from a dead one.** Re-examine
+`5` and `6` while pressing a key.
+
+Worth keeping as a rule: on a keyboard with reactive effects, "nothing
+happened" only counts after trying to interact.
 
 ## 11. What stays open
 
