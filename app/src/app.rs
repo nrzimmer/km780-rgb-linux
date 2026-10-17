@@ -12,12 +12,17 @@ use egui::{Color32, Pos2, Rect, Sense, Stroke, Vec2};
 use crate::assign::{self, Record, OFF_FUNCTIONS};
 use crate::effects;
 use crate::layout;
+use crate::profiles;
 use crate::proto::{self, Channels, Keyboard};
 use crate::slots::{self, NSLOTS};
 
-/// Side of a 1u key, in pixels.
-const UNIDADE: f32 = 38.0;
-const FOLGA: f32 = 3.0;
+/// How many screen pixels per pixel of the manufacturer's drawing.
+///
+/// `layout.rs` comes in G.SKILL pixels, where a normal key is 19-20 a side.
+/// 1.9 puts the key at ~37 px, readable without a magnifier.
+const SCALE: f32 = 1.9;
+/// Gap between neighbouring keys, in screen pixels.
+const FOLGA: f32 = 2.0;
 
 /// Everything the app reads and edits of a mode: the colors and the mode payload.
 ///
@@ -67,6 +72,8 @@ pub struct App {
     /// Function code chosen in the remap UI. F13 by default: it is the start of
     /// the free-key space (`docs/28`).
     function: u8,
+    /// Name typed in the profiles box.
+    profile_name: String,
     status: String,
     error: Option<String>,
     show_others: bool,
@@ -83,6 +90,7 @@ impl App {
             selection: HashSet::new(),
             color: [255, 0, 0],
             function: 0x68,
+            profile_name: String::new(),
             status: String::new(),
             error: None,
             show_others: false,
@@ -392,6 +400,11 @@ impl eframe::App for App {
             }
 
             ui.add_space(12.0);
+            ui.separator();
+            ui.heading("Profiles");
+            self.profile_controls(ui);
+
+            ui.add_space(12.0);
             ui.collapsing("Outros slots", |ui| {
                 ui.label(
                     "Named slots the drawing does not place: international \
@@ -568,9 +581,65 @@ impl App {
         ui.small(format!("log: {}", Record::path()));
     }
 
+    /// Profiles in a file of ours -- item 4 of `docs/29`.
+    ///
+    /// Saving takes a snapshot of the **buffer**, not of the keyboard: what is on
+    /// the screen is what goes to the file. Loading does the opposite and **writes
+    /// nothing** -- it lands in the buffer and becomes a pending change, like every edit
+    /// here.
+    fn profile_controls(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            ui.add(
+                egui::TextEdit::singleline(&mut self.profile_name)
+                    .hint_text("name")
+                    .desired_width(120.0),
+            );
+            if ui.button("Save").clicked() {
+                let p = profiles::Profile {
+                    colors: self.buffer.colors.clone(),
+                    brightness: self.buffer.brightness(),
+                    effect: self.buffer.effect(),
+                };
+                match profiles::save(&self.profile_name, &p) {
+                    Ok(path) => self.status = format!("profile salvo em {path}"),
+                    Err(e) => self.error = Some(e),
+                }
+            }
+        });
+
+        let list = profiles::list();
+        if list.is_empty() {
+            ui.small("no profile saved yet");
+        }
+        for name in list {
+            ui.horizontal(|ui| {
+                ui.label(&name);
+                if ui.small_button("Carregar").clicked() {
+                    match profiles::load(&name) {
+                        Ok(p) => {
+                            self.buffer.colors = p.colors;
+                            if self.buffer.has_info() {
+                                self.buffer.info[proto::OFF_BRIGHTNESS] = p.brightness;
+                                self.buffer.info[proto::OFF_EFFECT] = p.effect;
+                            }
+                            self.profile_name = name.clone();
+                            self.status = format!(
+                                "profile \"{name}\" loaded into the buffer -- \
+                                 nothing was written; use Apply"
+                            );
+                        }
+                        Err(e) => self.error = Some(e),
+                    }
+                }
+            });
+        }
+        ui.small("a profile remembers color, brightness and effect -- not the keys' function");
+        ui.small(format!("pasta: {}", profiles::path()));
+    }
+
     fn draw_keyboard(&mut self, ui: &mut egui::Ui) {
-        let (lu, lv) = layout::extent();
-        let size = Vec2::new(lu * UNIDADE + 8.0, lv * UNIDADE + 8.0);
+        let (x0, y0, lu, lv) = layout::extent();
+        let size = Vec2::new(lu * SCALE + 8.0, lv * SCALE + 8.0);
         let (resp, p) = ui.allocate_painter(size, Sense::hover());
         let base = resp.rect.min + Vec2::splat(4.0);
 
@@ -581,12 +650,12 @@ impl App {
         for t in layout::KEYS {
             let Some(slot) = slots::slot_of(t.name) else { continue };
             let canto = Pos2::new(
-                base.x + t.x * UNIDADE,
-                base.y + (t.y + layout::Y_OFFSET) * UNIDADE,
+                base.x + (t.x - x0) * SCALE,
+                base.y + (t.y - y0) * SCALE,
             );
             let r = Rect::from_min_size(
                 canto,
-                Vec2::new(t.w * UNIDADE - FOLGA, t.h * UNIDADE - FOLGA),
+                Vec2::new(t.w * SCALE - FOLGA, t.h * SCALE - FOLGA),
             );
 
             let id = ui.make_persistent_id(("key", slot));
@@ -638,7 +707,11 @@ impl App {
             let lum = 0.299 * fill.r() as f32 + 0.587 * fill.g() as f32
                 + 0.114 * fill.b() as f32;
             let tinta = if lum > 140.0 { Color32::BLACK } else { Color32::from_gray(225) };
-            let fonte = if t.name.chars().count() > 4 { 9.0 } else { 11.0 };
+            // The keys in the top row are short and wide; the normal ones are
+            // square. The font follows, otherwise the label overflows.
+            let fonte = (r.height() * 0.32)
+                .min(r.width() / (t.name.chars().count().max(1) as f32 * 0.62))
+                .clamp(6.5, 12.0);
             p.text(
                 r.center(),
                 egui::Align2::CENTER_CENTER,

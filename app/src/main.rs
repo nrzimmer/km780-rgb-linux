@@ -10,6 +10,7 @@ mod app;
 mod assign;
 mod effects;
 mod layout;
+mod profiles;
 mod proto;
 mod slots;
 

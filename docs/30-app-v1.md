@@ -13,6 +13,7 @@
     src/layout.rs   the physical layout, written by hand, with a test
     src/effects.rs  the byte 10 catalog, from the canonical table in docs/09 §7.1
     src/assign.rs   the function table (bytes 120-263) and the log from docs/28
+    src/profiles.rs profiles in a file of our own, item 4 of docs/29
     src/app.rs      the single screen: matrix, color, brightness, effect, function, Apply
 
 It builds on both targets, with no warnings:
@@ -30,11 +31,8 @@ follow physical adjacency". M3 comes out at `(2,6)`, right next to F3; the
 WinLock/Brightness/Timer trio comes out stacked in column 4. Drawing from there would give a
 scrambled keyboard.
 
-The layout in `src/layout.rs` is written by hand, in key units, with a
-test that validates each name against `slots::SLOTS`. **The position of the G,
-MR, M1-M3, WinLock/Brightness/Timer and multimedia keys is an informed guess, not
-measured** -- if one shows up out of place, that is where it gets fixed, by touching
-numeros.
+The right layout was **inside the repository all along** -- see the section
+"The layout comes from the vendor" below.
 
 ### The GUI and the CLI go through the same function, on purpose
 
@@ -92,6 +90,50 @@ Doc 29 said the Linux build needs `libudev`. It also needs the
 **libusb headers** -- only the runtime was installed:
 
     dnf install libusb1-devel systemd-devel
+
+## The layout comes from the vendor, not from a guess  [C]
+
+An earlier version of this document said that the position of the G keys, of
+MR/M1-M3, of the WinLock/Brightness/Timer trio and of the multimedia ones was an "informed
+guess, not measured". **It does not have to be**, and it no longer is: the source was in the
+repository itself, in `external/gds/`.
+
+`payload/app/KeyboardButtons.xml` is the file the **official app** uses to
+draw its own keyboard. Each key has a `<POS>` with x, y, width and
+height in pixels. There are **110 keys** -- the 104 the directory declares in
+`<KEY_NUM>` plus the six G keys. `src/layout.rs` is generated from it.
+
+The 12 that are missing -- MR, M1-M3, WinLock/Brightness/Timer and the five
+multimedia ones -- **are not in the XML because the official app does not let you
+reassign them**. Those came from `Keyboard Wireframe_01232015v3.pdf`, from the
+same package: a photo of the keyboard, from which the positions were measured and
+converted to the XML's coordinate system using the neighbouring keys
+as a reference.
+
+And the guess was wrong on two points, which justifies the work:
+
+- **MR, M1, M2 and M3 sit in a strip at the top left**, not in a column
+  next to the G keys. And `WinLock`, `Brightness` and `Timer` sit **next to
+  them, also at the top left** -- not in the right corner, where the guess
+  had put them.
+- The five multimedia ones sit at the top right, in the order **Stop, Prev,
+  Play, Next, Mute**, above the numeric keypad region.
+
+### The check that closes it: 122
+
+110 from the XML + 12 from the wireframe = **122 keys**. And 122 is exactly how many
+`docs/25` counted by scanning the electrical matrix on the hardware, by a path that
+has nothing to do with this one. Two sources that do not talk to each other arriving at the same
+number. There is a test pinning the 122: if the layout and the matrix ever disagree,
+ele cai.
+
+### As a bonus, `NumSep` stopped being a doubt  [C]
+
+Doc 25 calls the key `NumEnter`, the slot list has `NumSep`, and this
+document said that "it is not obvious they are the same". The vendor's XML
+settles it: the entry is called **`NUM_ENTER  VK_SEPARATOR`**. They are the same
+key, and `NumSep` is now drawn as the numeric keypad's Enter, two rows
+tall, where it really is.
 
 ## Brightness and effect: the round-trip, proven instead of assumed  [C]
 
@@ -175,12 +217,48 @@ It does not, on purpose:
   need extra data in the `0x0A` base and the content of a Text has never
   appeared on the wire (`docs/17` §7). The field accepts raw hex for whoever knows
   what they are doing, with the range announced beside it.
-- **Profiles saved to a file** -- the last item of `docs/29`.
-- **`NumSep` has no position in the drawing.** `docs/25` calls the key
-  `NumEnter`, the slot list has `NumSep`, and it is not obvious they are the same.
-  Guessing would put color on the wrong key; it stays in the "Other slots" list.
 - **The I/O runs on the UI thread.** A `Reload` freezes for ~250 ms, an `Apply`
   ~160 ms. A conscious trade of robustness for less code in v1.
+
+With that, **all four items in the "what comes next" of `docs/29` are
+done**: brightness, effects, key remapping and saved profiles. What is
+left of that document is only the Windows `[?]` block, which needs a
+Windows machine.
+
+## Profiles in a file of ours  [C]
+
+Item 4 of `docs/29`, and the "our own" is the point: the keyboard already has three modes,
+they are its own, and they are three. A profile from here lives in
+`~/.config/km780/profiles/<name>.json`, and the user can have as many as they want.
+
+Saving takes a portrait of the **buffer**, not of the keyboard -- what is on
+screen is what goes into the file. Loading does the reverse and **writes
+nothing**: it lands in the buffer and becomes pending, like every edit here.
+
+A profile stores color, brightness and effect. **It does not store the key
+assignment table**, and that is a decision, not an oversight: a remap goes to
+all three modes and survives a reboot (`docs/28`). Loading a profile called
+"night" and finding out it also changed the function of eight keys in every
+profile on the keyboard would be exactly the surprise this app exists to avoid.
+The `format` field leaves the door open for a version that asks for this
+explicitly, and a file with a newer format is **refused** rather than read
+halfway.
+
+### Exercised through the interface itself
+
+With `xdotool`, not only through the API:
+
+    click on the F5 key         -> selection border, "1 selected"
+    "Clear selected"            -> F5 black, "1 key(s) pending"
+    name "night" + "Save"       -> night.json with 144 colors, brightness 4, effect 0
+    "Load"                      -> F5 green again, "nothing pending"
+
+The saved file also showed something about the keyboard, not the app: slots 16,
+32, 68, 71 and 88 -- the five `km780lib.py` notes as "once on the no-key list"
+-- are at `FF0000` while the rest of the keyboard is green. It is not the app:
+they are a leftover from the slot-by-slot identification sessions of `docs/26`.
+It reinforces the decision to keep those slots reachable in the "Other slots"
+list instead of making them disappear.
 
 ## Guards the code respects
 
