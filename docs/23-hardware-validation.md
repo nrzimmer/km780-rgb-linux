@@ -350,16 +350,32 @@ know it has no effect from Linux either, not even with a mode switch. The
 simplest reading is that **the feature does not work**, rather than that a
 command is missing.
 
-### What was poorly designed in the test
+### Repeated on mode 3, with an active effect — same result  [C]
 
-The test ran on **mode 2, whose effect is 0 (static)**. If either of the two is
-"turn off the lighting *effect*" — the hypothesis that `18-capture-07-final.md`
-§7 supports, when it says the "Static Base Color" is the inverse of "Enable
-Lighting Effect" — then **there was no effect to turn off at all**, and the
-test could not show anything.
+The first round was on **mode 2, whose effect is 0 (static)**, which was a
+design flaw: if one of the two were "turn off the lighting *effect*" — the
+hypothesis `18-capture-07-final.md` §7 supports, in saying that "Static Base
+Color" is the inverse of "Enable Lighting Effect" —, there was no effect to turn
+off and the test could not show anything.
 
-It still has to be repeated on **mode 3**, which has Wave active. Until that is
-done, the result above holds for the static case and nothing more.
+Repeated on **mode 3, with Wave running**: **also nothing**. The animation did
+not stop, did not change speed, did not become a static color.
+
+With that the result is settled in both conditions that mattered:
+
+| Condition | 107 at 0 and 1 | 108 at 0 and 1 |
+|---|---|---|
+| mode 2, effect 0 (static) | no effect | no effect |
+| mode 3, effect 1 (Wave) | no effect | no effect |
+
+### The "which is which" question has become academic
+
+Telling `LightDisable` from `BacklightDisable` would only come out by
+observation if one of them did something. Neither does. What would remain is
+decompiling the app's save routine to see which key goes into which offset — but
+that would answer the **name**, not the behaviour, and the behaviour is: none.
+
+It stays `[I]` and of no practical value.
 
 ### Practical consequence for the tooling
 

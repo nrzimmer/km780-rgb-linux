@@ -285,8 +285,8 @@ profile with `0x82` and rewrites it unchanged with `0x02` at boot.
 | 15–71 | 57 | 4-byte records; the 4th of each is the **duration** (see 7.2) | [I] |
 | 72–105 | 34 | the rest of the configuration block | [?] |
 | 106 | 1 | a flag alternating between the two writes of each action | [C] |
-| **107** | 1 | **toggle**: `LightDisable` or `BacklightDisable`, default 1 | **[I]** |
-| **108** | 1 | **toggle**: the other of the two, default 1 | **[I]** |
+| **107** | 1 | **inert state**: `LightDisable` or `BacklightDisable`, default 1. Written and read back, with no observable effect | **[C]** |
+| **108** | 1 | **inert state**: the other of the two, default 1 | **[C]** |
 | **109** | 1 | **Windows key lock** (0/1) — the bag-symbol key | **[C]** |
 | 110–118 | 9 | **three RGB triples** stored in the profile — pure red `(255,0,0)` on this keyboard, matching mode 1's matrix | **[C]** |
 | **119** | 1 | **volume display** (`LightVolumeDisable`), default 0 | **[C]** |
@@ -692,7 +692,7 @@ ruled out in the test. It still has no known function. [?]
 | 7 | `0x0B`, `0x12`, `0x15` | **solved** — 144 bytes, one per slot, at byte 8, `22-gaps-solved.md` §1 [C] |
 | 7b | `0x0E`, `0x0F` | **solved** — 3 slots of 71 bytes at 8/79/150, each one `[2 hdr][3 channels × 23 steps]`, `22-gaps-solved.md` §4 [C] |
 | 8 | `0x07`, `0x0D`, `0x16` | role known (opening / frame / end of init), payload never varied [I] |
-| 9 | the lighting toggles | **there are three, not two**: bytes 107, 108 and 119; the app has exactly three switches. **119 solved** = volume display. **107 and 108 were written at both values, with a mode switch, and produce no visible effect** — they look like stored state, not control. It still has to be repeated in a mode with an active effect — `23-hardware-validation.md` §9 and §12 |
+| 9 | the lighting toggles | **closed.** There are **three**, not two: 107, 108 and 119, and the app has exactly three switches. **119** = volume display **[C]**. **107 and 108 are inert** — written at both values, in the static mode and in the mode with Wave, with a mode switch: no effect. They are stored state, not control. Preserve on the round-trip and do not touch — `23-hardware-validation.md` §9 and §12 |
 | 10 | bytes 72–107 of the config block | partial: 75–77 = number of color stops |
 | 11 | bytes 6–7 of the header | zero across the 6,277 packets captured [C] |
 | 11b | `buf[5]` | **carries Ripple/Sonic in the `0x0B`**; zero everywhere else [C] |
