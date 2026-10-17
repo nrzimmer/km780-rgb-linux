@@ -90,6 +90,19 @@ nav a:hover,nav a:focus-visible{color:var(--fg);border-bottom-color:var(--accent
 .by .v{font-family:var(--mono);font-size:.84rem;font-weight:600;color:var(--c,var(--fg))}
 .by .l{font-size:.6rem;line-height:1.25;color:var(--dim);margin-top:.15rem}
 
+/* --- physical matrix grid --- */
+.mtx{border-collapse:separate;border-spacing:2px;font-family:var(--mono);font-size:.62rem;
+  min-width:760px}
+.mtx th{font-size:.6rem;color:var(--dim);padding:0 .2rem;border:0;text-transform:none;
+  letter-spacing:0;white-space:nowrap}
+.mtx td{background:var(--paper);border:1px solid var(--rule);border-radius:3px;
+  padding:.3rem .15rem;text-align:center;white-space:nowrap;min-width:2.9rem}
+.mtx td.empty{background:repeating-linear-gradient(135deg,transparent 0 4px,var(--rule) 4px 5px);
+  border-style:dashed;color:var(--dim)}
+.mtx td.left{border-color:var(--f-cmd);color:var(--f-cmd)}
+.mtx td.media{border-color:var(--f-page);color:var(--f-page)}
+.mtx td.trio{border-color:var(--f-idx);color:var(--f-idx)}
+
 /* --- tables --- */
 .tscroll{overflow-x:auto;margin-block:1.1rem}
 table{border-collapse:collapse;font-size:.85rem;min-width:100%}
@@ -203,6 +216,7 @@ footer{margin-top:4rem;padding-top:1.2rem;border-top:1px solid var(--rule);
       <span><b>264</b> bytes per packet</span>
       <span><b>19</b> known commands</span>
   <span><b>9</b> read/write pairs</span>
+  <span><b>122</b> keys in the 15×9 matrix</span>
   <span><b>read</b> on the keyboard, not only in the capture</span>
       <span><b>144</b> LED slots, 132 used</span>
       <span><b>3</b> modes</span>
@@ -220,8 +234,9 @@ footer{margin-top:4rem;padding-top:1.2rem;border-top:1px solid var(--rule);
     <li><a href="#envelope">Envelope</a></li>
     <li><a href="#transport">Transport</a></li>
     <li><a href="#commands">Commands</a></li>
-    <li><a href="#color">Cor 0x09</a></li>
+    <li><a href="#color">Color 0x09</a></li>
     <li><a href="#slot-map">Slot map</a></li>
+    <li><a href="#matrix">Physical matrix</a></li>
     <li><a href="#mode">Mode 0x02</a></li>
     <li><a href="#key-functions">Key functions</a></li>
     <li><a href="#effects">Effects</a></li>
@@ -336,10 +351,10 @@ software</b>, so the active mode changes underneath the host.</p>
 </div>
 <div class="tscroll">
 <table>
-<thead><tr><th class="m">Evento</th><th>Significado</th><th>Conf.</th></tr></thead>
+<thead><tr><th class="m">Event</th><th>Meaning</th><th>Conf.</th></tr></thead>
 <tbody>
 <tr><td class="m">00 00 &lt;cmd&gt; 00 &lt;mode&gt;</td><td>ACK. Byte 4 = <b>mode</b> on the <code>0x01</code>/<code>0x81</code> ones, zero on the rest; bytes 3 and 5–7 zero across all 6,185 captured</td><td><span class="conf c-c">C</span></td></tr>
-<tr><td class="m">f6 01 XX YY</td><td><b>key pressed</b>: XX = column (1–13), YY = row (0–8) of the physical matrix</td><td><span class="conf c-c">C</span></td></tr>
+<tr><td class="m">f6 01 XX YY</td><td><b>key pressed</b>: XX = column, YY = row. A <b>15 × 9</b> matrix, 122 keys mapped — it only arrives after <code>0x16</code></td><td><span class="conf c-c">C</span></td></tr>
 <tr><td class="m">02 04 M 09 N</td><td><b>brightness</b> changed with the keyboard's keys: N in the range 0–4</td><td><span class="conf c-c">C</span></td></tr>
 <tr><td class="m">02 04 M 08 01</td><td>active mode / keyboard present</td><td><span class="conf c-c">C</span></td></tr>
 <tr><td class="m">02 04 M 04 …</td><td>unknown, 6 occurrences</td><td><span class="conf c-q">?</span></td></tr>
@@ -521,6 +536,75 @@ mode: those simply do not exist.</p>
   into the suspect slot and looking at the keyboard.</p>
 </div>
 <div class="orphans" id="orphans"></div>
+
+<!-- ===================== MATRIX ===================== -->
+<h2 id="matrix">The physical matrix</h2>
+<div class="col">
+<p>Once <code>0x16</code> opens the session, the keyboard emits
+<code>f6 01 &lt;column&gt; &lt;row&gt;</code> on EP <code>0x83</code> for every
+key. Mapped key by key on the hardware: <b>15 × 9</b>, 122 of the 135
+positions occupied, zero conflicts. <span class="conf c-c">C</span></p>
+<p>The order has nothing to do with the LED slots' — that one is scan order,
+this one is matrix wiring. And neither of the two is the physical order.</p>
+</div>
+
+<div class="legend">
+  <span><i style="--c:var(--f-cmd)"></i>left column: G, MR, modes</span>
+  <span><i style="--c:var(--f-page)"></i>multimedia</span>
+  <span><i style="--c:var(--f-idx)"></i>brightness, timer, bag</span>
+  <span><i class="hatch"></i>empty</span>
+</div>
+
+<div class="scroll">
+<table class="mtx"><thead><tr><th></th><th>c0</th><th>c1</th><th>c2</th><th>c3</th><th>c4</th><th>c5</th><th>c6</th><th>c7</th><th>c8</th><th>c9</th><th>c10</th><th>c11</th><th>c12</th><th>c13</th><th>c14</th></tr></thead><tbody>
+<tr><th>l0</th><td class="left" title="G1">G1</td><td class="" title="Esc">Esc</td><td class="" title="F1">F1</td><td class="" title="F2">F2</td><td class="" title="F4">F4</td><td class="" title="F5">F5</td><td class="" title="F6">F6</td><td class="" title="F8">F8</td><td class="" title="[">[</td><td class="" title="F11">F11</td><td class="" title="F12">F12</td><td class="" title="PrtSc">PrtSc</td><td class="" title="Pause">Pause</td><td class="" title="Num*">Num*</td><td class="" title="NumEnter">NumEnt</td></tr>
+<tr><th>l1</th><td class="left" title="G2">G2</td><td class="" title="`">`</td><td class="" title="2">2</td><td class="" title="3">3</td><td class="" title="4">4</td><td class="" title="6">6</td><td class="" title="8">8</td><td class="" title="9">9</td><td class="" title="-">-</td><td class="" title="=">=</td><td class="empty">#</td><td class="" title="Insert">Insert</td><td class="" title="PgUp">PgUp</td><td class="" title="Num/">Num/</td><td class="" title="Num-">Num-</td></tr>
+<tr><th>l2</th><td class="left" title="G3">G3</td><td class="" title="Tab">Tab</td><td class="" title="Q">Q</td><td class="" title="E">E</td><td class="" title="R">R</td><td class="" title="T">T</td><td class="" title="U">U</td><td class="" title="O">O</td><td class="" title="P">P</td><td class="" title="F10">F10</td><td class="" title="\">\</td><td class="" title="Delete">Delete</td><td class="" title="PgDn">PgDn</td><td class="" title="Num8">Num8</td><td class="" title="Num+">Num+</td></tr>
+<tr><th>l3</th><td class="left" title="G4">G4</td><td class="" title="CapsLock">Caps</td><td class="" title="A">A</td><td class="" title="S">S</td><td class="" title="F">F</td><td class="" title="G">G</td><td class="" title="J">J</td><td class="" title="L">L</td><td class="" title=";">;</td><td class="" title="'">'</td><td class="" title="Enter">Enter</td><td class="" title="ScrLk">ScrLk</td><td class="" title="Num4">Num4</td><td class="" title="Num5">Num5</td><td class="empty">#</td></tr>
+<tr><th>l4</th><td class="left" title="G5">G5</td><td class="" title="LShift">LShift</td><td class="" title="Z">Z</td><td class="" title="C">C</td><td class="" title="V">V</td><td class="" title="B">B</td><td class="" title="N">N</td><td class="" title=",">,</td><td class="" title=".">.</td><td class="empty">#</td><td class="" title="RShift">RShift</td><td class="" title="Home">Home</td><td class="" title="Num1">Num1</td><td class="" title="Num2">Num2</td><td class="" title="Num3">Num3</td></tr>
+<tr><th>l5</th><td class="left" title="G6">G6</td><td class="" title="LCtrl">LCtrl</td><td class="" title="LAlt">LAlt</td><td class="empty">#</td><td class="" title="5">5</td><td class="" title="Space">Space</td><td class="" title="F7">F7</td><td class="empty">#</td><td class="" title="RAlt">RAlt</td><td class="" title="Menu">Menu</td><td class="" title="Left">Left</td><td class="" title="End">End</td><td class="" title="NumLock">NumLk</td><td class="" title="Num0">Num0</td><td class="" title="Num.">Num.</td></tr>
+<tr><th>l6</th><td class="left" title="MR">MR</td><td class="" title="1">1</td><td class="left" title="M3">M3</td><td class="" title="F3">F3</td><td class="trio" title="the bag key">bag</td><td class="" title="7">7</td><td class="" title="I">I</td><td class="" title="F9">F9</td><td class="" title="/">/</td><td class="" title="]">]</td><td class="" title="Backspace">Bksp</td><td class="media" title="media 1">md1</td><td class="" title="Num7">Num7</td><td class="" title="Num9">Num9</td><td class="empty">#</td></tr>
+<tr><th>r7</th><td class="left" title="M1">M1</td><td class="empty">#</td><td class="" title="W">W</td><td class="" title="D">D</td><td class="trio" title="brightness">bright</td><td class="" title="Y">Y</td><td class="" title="K">K</td><td class="" title="0">0</td><td class="" title="RWin">RWin</td><td class="empty">#</td><td class="" title="Up">Up</td><td class="media" title="media 2">md2</td><td class="media" title="media 5">md5</td><td class="" title="Num6">Num6</td><td class="empty">#</td></tr>
+<tr><th>l8</th><td class="left" title="M2">M2</td><td class="" title="LWin">LWin</td><td class="" title="X">X</td><td class="empty">#</td><td class="trio" title="timer">timer</td><td class="" title="H">H</td><td class="" title="M">M</td><td class="empty">#</td><td class="empty">#</td><td class="" title="RCtrl">RCtrl</td><td class="" title="Down">Down</td><td class="media" title="media 3">md3</td><td class="media" title="media 4">md4</td><td class="" title="Right">Right</td><td class="empty">#</td></tr>
+</tbody></table>
+</div>
+
+<div class="note">
+  <div class="hd">The Linux map decodes the Windows captures</div>
+  <p>Applied to the <code>f6</code> events of the 11 captures made on the other
+  machine, the map recognises <b>1,535 out of 1,535</b> and gives back the real
+  typing in readable text:</p>
+  <p style="font-family:var(--mono);font-size:.82rem">F I Z &middot; M A I S
+  &middot; D &middot; <span style="color:var(--dim)">Backspace</span> &middot;
+  C O I S A S</p>
+  <p>No coordinate captured on Windows fell outside the map collected on
+  Linux.</p>
+</div>
+
+<div class="col">
+<p><b>Column 0 is the entire left-hand side</b> — G1 to G6 in rows 0 to 5, then
+MR, M1 and M2. Nine positions, nine keys, in order. <b>M3 does not fit
+there</b> and came out at <code>(2,6)</code>: the wiring does not follow
+physical adjacency.</p>
+<p>That is also why the earlier deduction of <b>13 × 9</b> was short — column 0
+was <b>never pressed on Windows</b>, because G keys and modes type nothing and
+nobody pressed them during the captures.</p>
+<p><b>MR, M1, M2 and M3 are ordinary matrix keys.</b> They were expected to
+emit the mode event; they do not. Of the 122 keys, every one produced
+an <code>f6</code> and none produced an event of another kind. The mode switch
+happens inside the keyboard, and the host only finds out from the
+<code>f6</code> or by re-reading with <code>0x81</code>.</p>
+</div>
+
+<div class="note danger">
+  <div class="hd">Correction: (4,7) is brightness, not Timer</div>
+  <p>The documentation attributed <code>f6 01 04 07</code> to the <b>Timer</b>
+  key. The capture itself proves otherwise: each <code>f6 (4,7)</code> is
+  followed <b>40 ms later</b> by a brightness event, five times in a row,
+  walking the levels 3, 2, 1, 0, 4. Timer is <code>(4,8)</code>, which
+  that document mentioned in passing as an "isolated pair". Two independent
+  sources, and today's collection matches both.</p>
+</div>
 
 <!-- ===================== MODE ===================== -->
 <h2 id="mode">0x02 · Mode Information</h2>
@@ -843,7 +927,7 @@ around the writes. <span class="conf c-c">C</span></p>
 </div>
 
 <ol class="seq">
-  <li><span class="w">07 16 01</span> <span class="d">opens the session</span></li>
+  <li><span class="w">07 16 01</span> <span class="d">opens the session — <b>and it is what turns <code>f6</code> on</b></span></li>
   <li><span class="w">07 0d 00</span> <span class="d">enters configuration mode</span></li>
   <li><span class="w">07 8a 00 00..03</span> <span class="d">reads page 0 — all 0xFF</span></li>
   <li><span class="w">07 81 00</span> <span class="d">reads the active mode → <code>07 81 01</code></span></li>
@@ -853,6 +937,24 @@ around the writes. <span class="conf c-c">C</span></p>
   <li><span class="w">07 0d 01</span> <span class="d">leaves configuration mode</span></li>
   <li><span class="w">07 07 00 15</span> <span class="d">command 0x07, role unknown</span></li>
 </ol>
+
+<div class="note danger">
+  <div class="hd"><code>0x16</code> opens a session that nothing closes</div>
+  <p>Tested on hardware: the <code>f6</code> event <b>does not come by
+  default</b>. On a freshly power-cycled keyboard no key produces an event —
+  until <code>0x16</code>. That is why no capture showed who turns it on: on
+  Windows the keyboard already came in turned on from an earlier run of the software, and
+  in <code>01-open</code> the first <code>f6</code> events arrive <b>19 seconds
+  before</b> the app sends its own <code>0x16</code>.</p>
+  <p><b>No command closes the session.</b> Across the 11 captures
+  <code>0x16</code> always appears as <code>07 16 01</code> and never with
+  another argument; the official software does not close it even when it exits.
+  And with the session open the keyboard <b>may stop typing</b>. What gives it
+  back is a <b>USB reset</b> (<code>dev.reset()</code>), not <code>0x0D 01</code>.</p>
+  <p>Any tool that sends <code>0x16</code> has to guarantee the reset on the
+  way out, including on an exception and on a signal — and cannot count on
+  Ctrl+C, which comes from the keyboard the test itself may knock out.</p>
+</div>
 
 <!-- ===================== GAPS ===================== -->
 <h2 id="gaps">What is missing</h2>
@@ -867,7 +969,9 @@ left, and why.</p>
 <tbody>
 <tr><td class="m">one anomalous 0x08</td><td>one packet of the 37 (<code>04-effects</code> f2057) has its first block zeroed and a gradient starting at byte 77, which aligns with neither 69 nor 71</td></tr>
 <tr><td class="m">header of the 0x0E / 0x0F<br>slots</td><td>the 2 bytes look like duration and direction, by position and by range, but they were not exercised <span class="conf c-i">I</span></td></tr>
-<tr><td class="m">the role of 0x07</td><td>the only command on the wire with no build site located. It appears once, at the end of init, as <code>07 07 00 15</code>.</td></tr>
+<tr><td class="m">the role of 0x07</td><td>the only command on the wire with no build site located. It was the prime suspect for turning <code>f6</code> on and <b>was ruled out in the test</b> — what turns it on is <code>0x16</code>. It still has no known function.</td></tr>
+<tr><td class="m">how to close the 0x16<br>session</td><td>no observed command closes it. Today the only way is a USB reset</td></tr>
+<tr><td class="m">LED slot of each<br>special key</td><td>the groups are known from the HID usage; which slot is which key inside the group only comes out by <b>painting a slot and looking</b></td></tr>
 <tr><td>the macro's Playback Option</td><td>a dropdown of 4 options; the byte was not located. <b>Only by decompilation.</b></td></tr>
 <tr><td class="m">byte 108 vs byte 119</td><td>they are two distinct toggles (all lighting, volume display); which is which is still to be said. <b>Settleable by experiment</b> — see below.</td></tr>
 <tr><td class="m">bytes 72–107</td><td>partial: 75–77 = number of color stops. <b>Settleable by experiment.</b></td></tr>

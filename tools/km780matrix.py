@@ -124,9 +124,10 @@ def grid(mapping):
     cols = sorted({c for c, _ in mapping})
     rows = sorted({l for _, l in mapping})
     width = max(len(v) for v in mapping.values()) + 1
+    # '#' marks an empty position. Do not use '.': the dot is a key name.
     print('\n      ' + ''.join(('c%d' % c).rjust(width) for c in cols))
     for l in rows:
-        print('  r%-3d' % l + ''.join((mapping.get((c, l), '.')).rjust(width) for c in cols))
+        print('  r%-3d' % l + ''.join((mapping.get((c, l), '#')).rjust(width) for c in cols))
 
 
 def main():

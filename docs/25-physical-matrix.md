@@ -26,17 +26,19 @@ are the G keys, MR and the modes, which type nothing.
 
 ## Grid
 
+`#` marks an empty position — `.` and `,` are key names.
+
 ```
                  c0          c1          c2          c3          c4          c5          c6          c7          c8          c9         c10         c11         c12         c13         c14
   l0            G1         Esc          F1          F2          F4          F5          F6          F8           [         F11         F12       PrtSc       Pause        Num*    NumEnter
-  l1            G2           `           2           3           4           6           8           9           -           =           ·      Insert        PgUp        Num/        Num-
+  l1            G2           `           2           3           4           6           8           9           -           =           #      Insert        PgUp        Num/        Num-
   l2            G3         Tab           Q           E           R           T           U           O           P         F10           \      Delete        PgDn        Num8        Num+
-  l3            G4    CapsLock           A           S           F           G           J           L           ;           '       Enter       ScrLk        Num4        Num5           ·
-  l4            G5      LShift           Z           C           V           B           N           ,           .           ·      RShift        Home        Num1        Num2        Num3
-  l5            G6       LCtrl        LAlt           ·           5       Space          F7           ·        RAlt        Menu        Left         End     NumLock        Num0        Num.
-  l6            MR           1          M3          F3 the bag one           7           I          F9           /           ]   Backspace     media 1        Num7        Num9           ·
-  l7            M1           ·           W           D      brightness           Y           K           0        RWin           ·          Up     media 2     media 5        Num6           ·
-  l8            M2        LWin           X           ·       timer           H           M           ·           ·       RCtrl        Down     media 3     media 4       Right           ·
+  l3            G4    CapsLock           A           S           F           G           J           L           ;           '       Enter       ScrLk        Num4        Num5           #
+  l4            G5      LShift           Z           C           V           B           N           ,           .           #      RShift        Home        Num1        Num2        Num3
+  l5            G6       LCtrl        LAlt           #           5       Space          F7           #        RAlt        Menu        Left         End     NumLock        Num0        Num.
+  l6            MR           1          M3          F3 the bag one           7           I          F9           /           ]   Backspace     media 1        Num7        Num9           #
+  l7            M1           #           W           D      brightness           Y           K           0        RWin           #          Up     media 2     media 5        Num6           #
+  l8            M2        LWin           X           #       timer           H           M           #           #       RCtrl        Down     media 3     media 4       Right           #
 ```
 
 ## Column 0: the entire left-hand side  [C]
