@@ -27,7 +27,7 @@ pub fn range_name(cod: u8) -> &'static str {
         0xB8 => "text",
         0xC0..=0xC8 => "Windows shortcut",
         0xCE..=0xD5 => "mouse function",
-        0x68..=0x73 => "F13..F24 -- the free-key range",
+        0x68..=0x73 => "F13..F24 \u{2014} the free-key range",
         0x04..=0xE7 => "HID usage (ordinary key)",
         _ => "outside the known ranges",
     }
@@ -178,7 +178,7 @@ impl Record {
 }
 
 #[cfg(test)]
-mod teste {
+mod tests {
     use super::*;
     use crate::proto::PKT;
 

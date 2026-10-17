@@ -63,14 +63,14 @@ impl Keyboard {
     /// is what tells them apart. If no hint works, it tries each candidate
     /// with the 0x81 read, which is harmless.
     pub fn open_device() -> Res<Keyboard> {
-        let api = HidApi::new().map_err(|e| format!("hidapi did not initialize: {e}"))?;
+        let api = HidApi::new().map_err(|e| format!("hidapi failed to initialise: {e}"))?;
         let mut candidates: Vec<_> = api
             .device_list()
             .filter(|d| d.vendor_id() == VID && d.product_id() == PID)
             .collect();
         if candidates.is_empty() {
             return Err(format!(
-                "keyboard {VID:04x}:{PID:04x} not found (plugged in? \
+                "keyboard {VID:04x}:{PID:04x} not found (plugged in? do you have \
                  permission on /dev/bus/usb?)"
             ));
         }
@@ -105,7 +105,7 @@ impl Keyboard {
             }
         }
         Err(format!(
-            "none of the HID entries accepted Feature report 7:\n{}",
+            "no HID entry accepted Feature report 7:\n{}",
             errors.join("\n")
         ))
     }
@@ -143,7 +143,7 @@ impl Keyboard {
             .get_feature_report(&mut buf)
             .map_err(|e| format!("read of command 0x{:02x} failed: {e}", packet[1]))?;
         if n < HDR {
-            return Err(format!("short response ({n} bytes) to command 0x{:02x}", packet[1]));
+            return Err(format!("short response ({n} bytes) from command 0x{:02x}", packet[1]));
         }
         sleep(wait);
         Ok(buf)
@@ -165,9 +165,9 @@ impl Keyboard {
     /// read-change-write, and that is fine: the command **is** just the mode
     /// number, the following 261 bytes are zero by specification, and there is
     /// no unknown field to preserve.
-    pub fn switch_mode(&self, mode: u8) -> Res<()> {
+    pub fn select_mode(&self, mode: u8) -> Res<()> {
         if !(1..=3).contains(&mode) {
-            return Err(format!("mode {mode} outside 1..3"));
+            return Err(format!("mode {mode} out of 1..3"));
         }
         self.write(&Self::build(MODE_SET, mode, 0, 0, 0, None), WAIT_READ)
     }
@@ -197,7 +197,7 @@ impl Keyboard {
     #[allow(dead_code)]
     pub fn write_mode(&self, mode: u8, d: &[u8]) -> Res<()> {
         if d.len() != PKT {
-            return Err(format!("mode payload with {} bytes, expected {PKT}", d.len()));
+            return Err(format!("mode payload has {} bytes, expected {PKT}", d.len()));
         }
         let mut b = d.to_vec();
         b[0] = REPORT_ID;
@@ -228,7 +228,7 @@ impl Keyboard {
     pub fn write_colors(&self, mode: u8, channels: &Channels) -> Res<()> {
         for (ch, data) in CHANNELS.iter().zip(channels.iter()) {
             if data.len() != crate::slots::NSLOTS {
-                return Err(format!("channel with {} bytes, expected 144", data.len()));
+                return Err(format!("channel has {} bytes, expected 144", data.len()));
             }
             self.write(
                 &Self::build(LED_SET, mode, *ch, 0, 0, Some(data)),

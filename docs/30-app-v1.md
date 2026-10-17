@@ -146,7 +146,7 @@ user turns the effect off precisely to see the static color.
 
 Rule 3 of `docs/29` requires unknown fields to travel intact through the
 round-trip. That is now **measured**, not trusted. `km780 --brightness N` and
-`km780 --effect N` do the read-change-write and print the diff of the payload
+`km780 --effect N` do the read-change-write and print the diff of the whole
 payload:
 
     mode 2: brightness 4 -> 2    bytes that changed in the 264-byte payload: [11]
@@ -256,7 +256,7 @@ a third of the usable area for something that, in normal use, is of no use. The
 documentation is here; access is through the CLI, which accepts **the slot
 lugar do nome:
 
-    km780 --pinta 85,F4 00ff00
+    km780 --paint 85,F4 00ff00
       slot  85  #000000   (no physical key on the US/ABNT layout)
       slot  36  #00FB2F
 
@@ -301,6 +301,20 @@ The saved file also showed something about the keyboard, not the app: slots 16,
 they are a leftover from the slot-by-slot identification sessions of `docs/26`.
 It reinforces the decision to keep those slots reachable in the "Other slots"
 list instead of making them disappear.
+
+## The whole repository is in English  [C]
+
+The app is the product -- the stated idea is to replace G.SKILL's --, so the
+screen, the messages, the command-line flags and the **crate
+identifiers** are in English. The comments carry the reasoning and the references to
+`docs/NN`, alongside `docs/` and `tools/`, and moving them away from that would only pull the
+code away from the documentation that explains it.
+
+The `SLOTS` table is **canonical** and shared with `docs/10` and with the Python
+tools, so renaming an entry there would break both ends. Of the 132 entries only
+one is shortened for the screen, the `Brightness` key, which becomes `Bright` at
+drawing time via `slots::display_name` -- a one-line exception, not a second
+table.
 
 ## Guards the code respects
 

@@ -41,18 +41,31 @@ pub static SLOTS: [&str; 132] = [
     "Num+"        , "INTL85"      , "Num3"        , "Num.",
 ];
 
-/// Slots the matrix addresses but that have no physical key on the US/ABNT
-/// layout -- the five whose HID falls in the international range 0x85-0x8b.
+/// Slots the matrix addresses but that have no physical key in the US/ABNT
+/// layout -- the five with a HID code in the international range 0x85-0x8b.
 /// See `docs/23` §6: "dark" does not mean "no key".
-pub static NO_KEY: [usize; 5] = [35, 80, 85, 91, 129];
+pub static NO_PHYSICAL_KEY: [usize; 5] = [35, 80, 85, 91, 129];
+
+/// Name to show on screen.
+///
+/// `SLOTS` is the **canonical** table, shared with `docs/10` and with the
+/// Python tools -- renaming there would break both ends. The only entry that
+/// differs here is the brightness key, shortened to fit the key cap, so this
+/// is a single display exception and not a second table.
+pub fn display_name(name: &str) -> &str {
+    match name {
+        "Brightness" => "Bright",
+        other => other,
+    }
+}
 
 /// Slot of a key by name, as in `docs/10-key-map.md`, **or by number**.
 ///
 /// The number matters: 22 of the 144 slots have no key in the drawing (10
-/// named without a physical key on the US/ABNT layout, plus the 132-143 tail
-/// that does not even have a name). The GUI does not show them, but they
-/// exist in the payload and on this keyboard some of them are lit -- the
-/// number is how to reach them from the CLI. See `docs/30`.
+/// named without a physical key in the US/ABNT layout, and the 132-143 tail
+/// that has no name at all). The GUI does not show them, but they exist in the
+/// payload and on this keyboard some are lit -- the number is how to reach
+/// them from the CLI. See `docs/30`.
 pub fn slot_of(name: &str) -> Option<usize> {
     let t = name.trim();
     if let Ok(n) = t.parse::<usize>() {

@@ -23,7 +23,7 @@ fn probe() {
             std::process::exit(1);
         }
         Ok(kb) => {
-            println!("open: {}", kb.description);
+            println!("opened: {}", kb.description);
             match kb.active_mode() {
                 Ok(m) => {
                     println!("active mode: {m}");
@@ -36,10 +36,10 @@ fn probe() {
                     }
                     match kb.read_colors(m) {
                         Ok(c) => {
-                            let nonzero = (0..slots::NSLOTS)
+                            let lit = (0..slots::NSLOTS)
                                 .filter(|&i| c[0][i] != 0 || c[1][i] != 0 || c[2][i] != 0)
                                 .count();
-                            println!("0x89 ok: {nonzero} slots lit");
+                            println!("0x89 ok: {lit} slots lit");
                             for name in ["F1", "F2", "F3", "1", "2", "3", "4"] {
                                 if let Some(i) = slots::slot_of(name) {
                                     println!("  {name:4} slot {i:3}  #{:02X}{:02X}{:02X}",
@@ -75,12 +75,12 @@ fn paint_cmd(keys: &str, color: &str) {
     let mode = kb.active_mode().expect("0x81");
     let mut channels = kb.read_colors(mode).expect("0x89");
 
-    println!("mode {mode}; previous color of the slots touched:");
+    println!("mode {mode}; previous color of the touched slots:");
     for &i in &indices {
         // A warning, not a refusal: painting a slot with no key is legitimate
         // -- several of them are lit on this keyboard -- but whoever asked by
         // number deserves to know they will see nothing on a US/ABNT layout.
-        let note = if slots::NO_KEY.contains(&i) {
+        let note = if slots::NO_PHYSICAL_KEY.contains(&i) {
             "   (no physical key on the US/ABNT layout)"
         } else {
             ""
@@ -97,18 +97,18 @@ fn paint_cmd(keys: &str, color: &str) {
     }
     kb.write_colors(mode, &channels).expect("0x09");
 
-    let after = kb.read_colors(mode).expect("0x89 back");
+    let after = kb.read_colors(mode).expect("0x89 de back");
     let mut diffs = 0;
     for i in 0..slots::NSLOTS {
         for ch in 0..3 {
             if after[ch][i] != channels[ch][i] {
                 diffs += 1;
-                println!("  DIVERGES slot {i} channel {ch}: {} != {}", after[ch][i], channels[ch][i]);
+                println!("  MISMATCH slot {i} channel {ch}: {} != {}", after[ch][i], channels[ch][i]);
             }
         }
     }
     if diffs == 0 {
-        println!("the re-read matches what was written, across the 144 slots of the 3 channels");
+        println!("read-back matches what was written, across all 144 slots of the 3 channels");
     }
 }
 
@@ -134,28 +134,28 @@ fn set_mode_byte(offset: usize, value: &str) {
         before[proto::OFF_EFFECT]
     );
 
-    let mut new_payload = before.clone();
-    new_payload[offset] = v;
-    kb.write_mode(mode, &new_payload).expect("0x02");
+    let mut updated = before.clone();
+    updated[offset] = v;
+    kb.write_mode(mode, &updated).expect("0x02");
 
-    let after = kb.read_mode(mode).expect("0x82 back");
+    let after = kb.read_mode(mode).expect("0x82 de back");
     let diffs: Vec<usize> = (0..proto::PKT)
         .filter(|&i| after[i] != before[i])
         .collect();
-    println!("bytes that changed in the 264-byte payload: {diffs:?}");
+    println!("bytes changed in the 264-byte payload: {diffs:?}");
     for i in diffs {
         println!("  byte {i}: {:#04x} -> {:#04x}", before[i], after[i]);
     }
 }
 
 /// `km780 --function Timer` reads; `km780 --function Timer=f14` writes **to
-/// modes**, saving the previous value.
+/// all three modes**, saving the previous value.
 ///
 /// Same semantics as `tools/km780assign.py`, including the record in
 /// `~/.config/km780/assignments.json` -- the two have to see what the other
 /// stored, otherwise one's `restore` does not undo the other's.
 fn function(arg: &str) {
-    let (key_name, new_payload) = match arg.split_once('=') {
+    let (key_name, updated) = match arg.split_once('=') {
         Some((t, c)) => {
             let c = c.trim().to_lowercase();
             let v = if let Some(n) = c.strip_prefix('f') {
@@ -163,7 +163,7 @@ fn function(arg: &str) {
                 assert!((13..=24).contains(&n), "only F13..F24 by name");
                 0x68 + (n - 13)
             } else {
-                u8::from_str_radix(&c, 16).expect("hex, ex. 68")
+                u8::from_str_radix(&c, 16).expect("hex, e.g. 68")
             };
             (t.trim().to_string(), Some(v))
         }
@@ -179,23 +179,23 @@ fn function(arg: &str) {
     for mode in 1..=3u8 {
         let d = kb.read_mode(mode).expect("0x82");
         let before = d[off];
-        match new_payload {
+        match updated {
             None => println!(
                 "mode {mode}  {key_name}  byte {off} = {} ({}){}",
                 assign::name(before),
                 assign::range_name(before),
                 match record.previous(mode, slot) {
-                    Some(v) => format!("   previous value stored: {}", assign::name(v)),
+                    Some(v) => format!("   recorded previous: {}", assign::name(v)),
                     None => String::new(),
                 }
             ),
             Some(_) => {}
         }
     }
-    let Some(v) = new_payload else { return };
+    let Some(v) = updated else { return };
 
     // Writing through the SAME path as the GUI: the active mode via write_mode,
-    // other two through assign::propagate. That way the wire test done here
+    // the other two via assign::propagate. That way the on-the-wire test done
     // here holds for the window's `Apply` too.
     let mode = kb.active_mode().expect("0x81");
     let before_payload = kb.read_mode(mode).expect("0x82");
@@ -209,7 +209,7 @@ fn function(arg: &str) {
         println!(
             "mode {m}  {key_name}  byte {off} = {}{}",
             assign::name(back[off]),
-            if back[off] == v { "" } else { "   DID NOT TAKE" }
+            if back[off] == v { "" } else { "   DID NOT STICK" }
         );
     }
     println!(
@@ -220,27 +220,27 @@ fn function(arg: &str) {
 }
 
 fn main() -> eframe::Result<()> {
-    let argv0: Vec<String> = std::env::args().collect();
-    if let Some(p) = argv0.iter().position(|a| a == "--brightness") {
-        set_mode_byte(proto::OFF_BRIGHTNESS, &argv0[p + 1]);
+    let argv: Vec<String> = std::env::args().collect();
+    if let Some(p) = argv.iter().position(|a| a == "--brightness") {
+        set_mode_byte(proto::OFF_BRIGHTNESS, &argv[p + 1]);
         return Ok(());
     }
-    if let Some(p) = argv0.iter().position(|a| a == "--function") {
-        function(&argv0[p + 1]);
+    if let Some(p) = argv.iter().position(|a| a == "--function") {
+        function(&argv[p + 1]);
         return Ok(());
     }
-    if let Some(p) = argv0.iter().position(|a| a == "--effect") {
-        set_mode_byte(proto::OFF_EFFECT, &argv0[p + 1]);
+    if let Some(p) = argv.iter().position(|a| a == "--effect") {
+        set_mode_byte(proto::OFF_EFFECT, &argv[p + 1]);
         return Ok(());
     }
 
     let argv: Vec<String> = std::env::args().collect();
-    if let Some(p) = argv.iter().position(|a| a == "--paint_cmd") {
+    if let Some(p) = argv.iter().position(|a| a == "--paint") {
         paint_cmd(&argv[p + 1], &argv[p + 2]);
         return Ok(());
     }
 
-    if std::env::args().any(|a| a == "--segura") {
+    if std::env::args().any(|a| a == "--hold") {
         // Diagnostics: open and hold, to measure what the host loses
         // while interface 1 is claimed.
         let _kb = proto::Keyboard::open_device().expect("could not open");
@@ -258,13 +258,14 @@ fn main() -> eframe::Result<()> {
     // The width comes out of the layout itself -- the keyboard drawing in the
     // manufacturer's pixels, times the scale, plus the side panel. The height
     // is the side panel's, which is taller than the keyboard. Since there is
-    // no scrolling, the minimum is the same as the default: shrinking would only crop.
+    // no scrolling, the minimum is the same as the default: shrinking would
+    // only crop.
     let (_, _, w, _) = layout::extent();
     let width = w * app::SCALE + app::PANEL_WIDTH + 30.0;
     // Height: the top bar, the drawn keyboard, the bottom columns and the
     // apply bar. With room to spare for the function section, which grows when
     // a key is selected.
-    let height = 640.0;
+    let height = 560.0;
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
             // app_id becomes WM_CLASS on X11, which is how i3 identifies the

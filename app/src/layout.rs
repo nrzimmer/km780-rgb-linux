@@ -174,7 +174,7 @@ pub fn extent() -> (f32, f32, f32, f32) {
 }
 
 #[cfg(test)]
-mod teste {
+mod tests {
     use super::*;
     use crate::slots;
 
@@ -183,7 +183,7 @@ mod teste {
         for t in KEYS {
             assert!(
                 slots::slot_of(t.name).is_some(),
-                "the layout names {:?}, which is not a slot name",
+                "layout names {:?}, which is not a slot name",
                 t.name
             );
         }

@@ -37,14 +37,19 @@ after" are done.
 
 Without the GUI, for diagnostics and scripting:
 
-    km780 --probe              reads everything and prints it
-    km780 --brightness 2       read-change-write + diff of the whole payload
-    km780 --effect 4           same, byte 10
-    km780 --function Timer=f13 remaps in all 3 modes, recording the previous value
+    km780 --probe               reads everything and prints it
+    km780 --brightness 2        read-change-write + diff of the whole payload
+    km780 --effect 4            same, byte 10
+    km780 --function Timer=f13  remaps in all 3 modes, recording the previous value
 
 The keyboard layout does **not** come from `physical-matrix.json` (which is the
 electrical matrix): it comes from the official app's `KeyboardButtons.xml`, in
 `external/gds/`. 122 keys, the same number `docs/25` counted in the matrix.
+
+The crate's interface, identifiers and comments are **in English**, like the
+rest of the repository. The `SLOTS` table keeps the canonical names from
+`docs/10` — only the `Brightness` key is shortened when drawing, via
+`slots::display_name`.
 
 Start by reading `docs/30`.
 
