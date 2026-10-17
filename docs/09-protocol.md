@@ -203,8 +203,8 @@ by `mov byte [buf+1], <cmd>`, in the four addressing forms MSVC emitted
 | `0x0A` | `0x8A` | — | `0x100dbb94` `0x100dba93` / `0x100dbc5c` |
 | `0x0D` | `0x8D`? | — | `0x100d1ecb` / not observed |
 | `0x0B` | `0x8B` | **Ripple / Sonic** | `FUN_100d7170` / `0x100db5ec` |
-| `0x0E` | ? | **gradient per effect slot** | `0x100d5c69` (`FUN_100d5060`) |
-| `0x0F` | ? | **idem** | `0x100d5983` (`FUN_100d5060`) |
+| `0x0E` | 71 B/slot, 3 slots | **gradient per effect slot** — `docs/27` | `0x100d5c69` (`FUN_100d5060`) |
+| `0x0F` | same | **same** (Rain family) — `docs/27` | `0x100d5983` (`FUN_100d5060`) |
 | `0x12` | `0x92` | **Rain** | `0x100d7642` / `0x100db4ee` |
 | `0x15` | **`0x95`** | **Changeling** | `FUN_100d7170` / `0x100db565` |
 | `0x16` | `0x96`? | opens the session | `0x100d1f7e` / not observed |

@@ -55,9 +55,11 @@ The declared goal is met. Two directions, neither blocking the other:
 
 - **Usability** — `--profile` with saved themes, restoring at boot (a systemd
   user unit), packaging. Needs no more reverse engineering.
-- **Protocol** — the gaps in the table below. The highest-yield one is
-  decompiling `FUN_100d5060` (6,911 B), which closes `0x0E`/`0x0F` and
-  probably gives the name of the inert `LightDisable`.
+- **Protocol** — the gaps in the table below. `FUN_100d5060` has already been
+  decompiled (`docs/27`): it closed `0x0E`/`0x0F` and revealed a ninth effect,
+  **Checkpoint** (byte 10 = `8`), which the v2.04 UI did not offer. Testing it on
+  hardware is the next cheap and reversible step — write `8` into byte 10 of a
+  mode via read-change-write and look at the keyboard.
 
 ## Hardware state
 
@@ -69,11 +71,13 @@ The declared goal is met. Two directions, neither blocking the other:
 
 | Gap | How it comes out |
 |---|---|
-| internal layout of `0x0E` / `0x0F` | decompile `FUN_100d5060` (6,911 B, 5 stretches) — the function is already located |
+| ~~internal layout of `0x0E` / `0x0F`~~ | **closed** — `docs/27`, via the builder |
 | the role of `0x07` (`07 07 00 15`) | the only command on the wire with no build site located |
 | the macro's Playback Option | decompilation |
 | LED Sleep: do the parameters reach the keyboard? | `SleepMode`/`SleepMin`/`SleepEffect*` exist in the app; whether they go on the wire is unknown |
 | which of the inert ones is `LightDisable` | decompilation only, and it gives the **name**, not the behaviour |
+| `base+1` of the effect slot; 5th byte of the stop | decompile the **caller** of `FUN_100d5060` |
+| does the **Checkpoint** effect (byte 10 = 8) exist? | testable on hardware: `docs/27` §8 |
 | the `02 04 M 04 …` event | 6 occurrences, no context |
 
 ## Operating rules, learned from two scares

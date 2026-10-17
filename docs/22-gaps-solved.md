@@ -266,10 +266,14 @@ anywhere.
 confirms that the three bases are the **three effect slots per mode** — the same
 ones as subpages `02`/`05`/`08` of `0x0A` (§7.4 of the specification).
 
-The second header byte is `03` in almost all of them and `04` in one; the first
-varies between `03`/`04`/`06`. By position and by range, these are **duration
-and direction**, as in `0x0A` — but that is still `[I]`, it has not been
-exercised.
+The header's second byte is `03` in almost all of them and `04` in one; the
+first varies `03`/`04`/`06`.
+
+> **Corrected in `docs/27` §4.** The assumption that these were *duration and
+> direction* is wrong. Decompiling the builder shows that the first is the
+> **gradient stop count** (capped at 23) and the second a single scalar coming
+> from the caller. `docs/27` also fixes the channel bases at base+2 / +25 / +48
+> and explains the `fc` by quantization.
 
 ### What this means in practice
 

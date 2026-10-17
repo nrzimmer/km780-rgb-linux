@@ -38,8 +38,12 @@ selection, which pairs ID with name unambiguously:
 | `0x09` | Cycle |
 | `0x0A` | Rain |
 
-`0x05`, `0x06` and `0x08` did not appear. Byte 10 was `0x00` when the
-lighting was static, so **`0` is probably "no effect"**.  [I]
+`0x05`, `0x06` and `0x08` did not appear. `docs/27` §7 identifies
+**`0x08` as "Checkpoint"** -- it exists in the DLL, with the profile `.chk`,
+and the v2.04 UI did not offer it. `0x05` and `0x06` have no branch in the
+builder, and probably do not exist. Byte 10 was `0x00` when the lighting
+was static, so **`0` is probably
+"no effect"**.  [I]
 
 ## 3. Duration and direction  [C]
 
