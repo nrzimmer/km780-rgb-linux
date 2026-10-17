@@ -92,9 +92,10 @@ that is it; the animation comes out with whatever is already stored. Missing:
   works with the G.SKILL app running.
 - **LED Sleep** — never identified. `[?]`
 
-**A protocol gap closed along the way:** `0xAB` = Volume Up, measured on
-2026-10-17 by assigning the code to the Timer key from the app itself. It was
-`[I]`. `0xAA` (Volume Down) is still untested directly. See `docs/09` §5.2.
+**A protocol gap closed along the way:** `0xAA` and `0xAB` are the two
+directions of the volume wheel, measured on 2026-10-17 by assigning each of them
+to the Timer key through the app itself. They were `[I]`; the range `0xA5`–`0xAB`
+is now entirely closed. See `docs/09` §5.2.
 
 **App quality, not protocol:**
 
