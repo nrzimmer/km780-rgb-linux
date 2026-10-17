@@ -82,7 +82,7 @@ nav a:hover,nav a:focus-visible{color:var(--fg);border-bottom-color:var(--accent
 .fld .vl{font-family:var(--mono);font-size:.72rem;color:var(--c,var(--dim))}
 
 /* --- grid of individual bytes --- */
-.bytes{display:flex;min-width:0;gap:3px;flex-wrap:wrap}
+.bytes{display:flex;min-width:0;gap:3px;flex-wrap:nowrap}
 .by{flex:0 0 auto;width:4.1rem;border:1px solid var(--rule);border-top:4px solid var(--c,var(--f-unk));
   border-radius:3px;background:var(--paper);padding:.35rem .3rem;text-align:center}
 .by.unk{background:repeating-linear-gradient(135deg,transparent 0 5px,var(--rule) 5px 6px)}
@@ -110,9 +110,12 @@ td.m,th.m{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:
 
 /* --- numbered sequence --- */
 ol.seq{list-style:none;counter-reset:s;margin:1.2rem 0;padding:0;display:grid;gap:.45rem}
-ol.seq li{counter-increment:s;display:grid;grid-template-columns:2.1rem 1fr;gap:.7rem;align-items:baseline}
+ol.seq li{counter-increment:s;display:flex;flex-wrap:wrap;gap:.2rem .7rem;align-items:baseline}
 ol.seq li::before{content:counter(s,decimal-leading-zero);font-family:var(--mono);font-size:.74rem;
-  color:var(--dim);border-right:1px solid var(--rule);padding-right:.5rem;text-align:right}
+  color:var(--dim);border-right:1px solid var(--rule);padding-right:.5rem;text-align:right;
+  flex:0 0 2.1rem}
+ol.seq .w{min-width:0;overflow-wrap:anywhere}
+ol.seq .d{min-width:0}
 ol.seq .w{font-family:var(--mono);font-size:.82rem}
 ol.seq .d{font-size:.84rem;color:var(--dim)}
 
@@ -138,7 +141,7 @@ ol.seq .d{font-size:.84rem;color:var(--dim)}
 .codebar .gap{background:repeating-linear-gradient(135deg,transparent 0 5px,var(--rule) 5px 6px)}
 
 /* --- keyboard --- */
-.kb{margin-block:1.2rem}
+.kb{margin-block:0;min-width:max-content}
 .kbrow{display:flex;gap:3px;margin-bottom:3px}
 .kbrow .sp{flex:0 0 auto}
 .k{--w:1;flex:0 0 auto;width:calc(var(--w)*var(--ku) + (var(--w) - 1)*3px);height:var(--ku);
@@ -180,6 +183,7 @@ ol.seq .d{font-size:.84rem;color:var(--dim)}
 .legend i.hatch{background:repeating-linear-gradient(135deg,transparent 0 4px,var(--f-unk) 4px 5px);
   border:1px solid var(--rule)}
 
+@media (max-width:560px){#kb{--ku:1.75rem!important}}
 footer{margin-top:4rem;padding-top:1.2rem;border-top:1px solid var(--rule);
   font-family:var(--mono);font-size:.74rem;color:var(--dim)}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
@@ -458,7 +462,7 @@ neighbouring slots land in opposite corners of the keyboard. Click a key to see 
 o HID usage e o virtual-key code.</p>
 </div>
 
-<div class="kb" id="kb" style="--ku:2.35rem"></div>
+<div class="scroll"><div class="kb" id="kb" style="--ku:2.35rem"></div></div>
 <div class="readout" id="readout" aria-live="polite"></div>
 
 <h3>In the matrix, but not on the keyboard</h3>
