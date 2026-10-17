@@ -325,7 +325,14 @@ high ranges do not collide with the HID usages the keyboard uses (`0x04`–`0x65
 
 A cross-check: the Multimedia codes (`a5`–`a9`) are exactly the ones the factory
 table already carries in the slots of the physical media keys (105–107, 115,
-(105–107, 115, 116) em `10-key-map.md`.
+(105–107, 115, 116) em `10-key-map.md`. **Identificados um a um**
+(`26-special-keys.md`):
+
+    a5 = Stop   a6 = Prev   a7 = Play/Pause   a8 = Next   a9 = Mute
+
+That leaves `aa` and `ab` of the range's seven, and leaves exactly **Volume Up**
+and **Volume Down** in the app's dialog — which are the **wheel**, the only
+with no key and no LED slot. [I]
 
 Macro and Text need extra data, which goes into the `0x0A` database page `0x09`
 (names) and `0x05` (content), indexed by `buf[3]`. A **Text**'s content never
