@@ -208,7 +208,7 @@ footer{margin-top:4rem;padding-top:1.2rem;border-top:1px solid var(--rule);
 <header class="top">
   <div class="col">
     <div class="eyebrow">G.SKILL Ripjaws · USB 28da:1101 · FW 77</div>
-    <h1>Protocolo KM780 RGB</h1>
+    <h1>KM780 RGB Protocol</h1>
     <p class="lede">The keyboard's lighting and configuration protocol, field
     by field, as reconstructed from 11 USB captures of the official software,
     from decompiling <code>Setting.dll</code> and from the firmware.</p>
@@ -217,6 +217,7 @@ footer{margin-top:4rem;padding-top:1.2rem;border-top:1px solid var(--rule);
       <span><b>19</b> known commands</span>
   <span><b>9</b> read/write pairs</span>
   <span><b>122</b> keys in the 15×9 matrix</span>
+  <span><b>19</b> named special slots</span>
   <span><b>read</b> on the keyboard, not only in the capture</span>
       <span><b>144</b> LED slots, 132 used</span>
       <span><b>3</b> modes</span>
@@ -513,6 +514,55 @@ o HID usage e o virtual-key code.</p>
 
 <div class="scroll"><div class="kb" id="kb" style="--ku:2.35rem"></div></div>
 <div class="readout" id="readout" aria-live="polite"></div>
+
+<h3>The 18 special keys, slot by slot</h3>
+<div class="col">
+<p>The factory table gives 19 slots with a <b>synthetic ID</b> instead of a
+virtual-key — they are the keys with no equivalent on an ordinary keyboard. The
+grouping came from the HID usage, but which slot was which key <b>within</b>
+the group did not. Solved by lighting one group at a time, one color per slot,
+and reading the legend off the keyboard: four rounds for eighteen keys.
+<span class="conf c-c">C</span></p>
+</div>
+
+<div class="tscroll">
+<table>
+<thead><tr><th class="m">slot</th><th class="m">HID</th><th>key</th><th class="m">matrix</th><th class="m">slot</th><th class="m">HID</th><th>key</th><th class="m">matrix</th></tr></thead>
+<tbody>
+<tr><td class="m">0</td><td class="m">00</td><td><b>G1</b></td><td class="m">(0,0)</td><td class="m">24</td><td class="m">af</td><td><b>M3</b></td><td class="m">(2,6)</td></tr>
+<tr><td class="m">1</td><td class="m">00</td><td><b>G2</b></td><td class="m">(0,1)</td><td class="m">42</td><td class="m">b9</td><td><b>WinLock</b></td><td class="m">(4,6)</td></tr>
+<tr><td class="m">2</td><td class="m">00</td><td><b>G3</b></td><td class="m">(0,2)</td><td class="m">43</td><td class="m">bb</td><td><b>Brightness</b></td><td class="m">(4,7)</td></tr>
+<tr><td class="m">3</td><td class="m">00</td><td><b>G4</b></td><td class="m">(0,3)</td><td class="m">44</td><td class="m">ba</td><td><b>Timer</b></td><td class="m">(4,8)</td></tr>
+<tr><td class="m">4</td><td class="m">00</td><td><b>G5</b></td><td class="m">(0,4)</td><td class="m">105</td><td class="m">a5</td><td><b>Stop</b></td><td class="m">(11,6)</td></tr>
+<tr><td class="m">5</td><td class="m">00</td><td><b>G6</b></td><td class="m">(0,5)</td><td class="m">106</td><td class="m">a6</td><td><b>Prev</b></td><td class="m">(11,7)</td></tr>
+<tr><td class="m">6</td><td class="m">b3</td><td><b>MR</b></td><td class="m">(0,6)</td><td class="m">107</td><td class="m">a7</td><td><b>Play/Pause</b></td><td class="m">(11,8)</td></tr>
+<tr><td class="m">7</td><td class="m">ad</td><td><b>M1</b></td><td class="m">(0,7)</td><td class="m">115</td><td class="m">a9</td><td><b>Mute</b></td><td class="m">(12,7)</td></tr>
+<tr><td class="m">8</td><td class="m">ae</td><td><b>M2</b></td><td class="m">(0,8)</td><td class="m">116</td><td class="m">a8</td><td><b>Next</b></td><td class="m">(12,8)</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="col">
+<p>Three things corroborate the reading. <b>The G keys come out in order</b> in
+the slots (0–5 = G1–G6) <i>and</i> in the matrix (column 0, rows 0–5): two
+independent numberings in agreement. <b>M1, M2 and M3 have consecutive HID
+codes</b> (<code>ad ae af</code>), and MR — which is not a mode, it is the macro
+recorder — sits outside the sequence, at <code>b3</code>.</p>
+<p>And the <b>column-4 trio does not come out in order</b>: slots 42, 43, 44 are
+WinLock, Brightness and Timer, but the HID codes are <code>b9</code>,
+<code>bb</code>, <code>ba</code>. You can see all three orderings — slot, HID
+and physical position — disagreeing with each other in the same trio.</p>
+</div>
+
+<div class="note">
+  <div class="hd">The codes <code>aa</code> and <code>ab</code> are the wheel</div>
+  <p>The Multimedia function range has seven codes, <code>a5</code> to
+  <code>ab</code>. Five now have names — Stop, Prev, Play/Pause, Next, Mute.
+  The app's dialog offers seven options: those five plus <b>Volume Up</b> and
+  <b>Volume Down</b>. And the volume wheel is the only control that
+  <b>emits no event and has no LED slot</b>. Both ends meet.
+  <span class="conf c-i">I</span></p>
+</div>
 
 <h3>In the matrix, but not on the keyboard</h3>
 <div class="col">
@@ -1038,7 +1088,7 @@ left, and why.</p>
 <tr><td class="m">header of the 0x0E / 0x0F<br>slots</td><td>the 2 bytes look like duration and direction, by position and by range, but they were not exercised <span class="conf c-i">I</span></td></tr>
 <tr><td class="m">the role of 0x07</td><td>the only command on the wire with no build site located. It was the prime suspect for turning <code>f6</code> on and <b>was ruled out in the test</b> — what turns it on is <code>0x16</code>. It still has no known function.</td></tr>
 <tr><td class="m">how to close the 0x16<br>session</td><td>no observed command closes it. Today the only way is a USB reset</td></tr>
-<tr><td class="m">LED slot of each<br>special key</td><td>the groups are known from the HID usage; which slot is which key inside the group only comes out by <b>painting a slot and looking</b></td></tr>
+<tr><td class="m">multimedia codes<br>aa and ab</td><td>two of the seven in the range are left over, and Volume Up and Volume Down are left over in the app — they are the wheel, which has neither a key nor a slot <span class="conf c-i">I</span></td></tr>
 <tr><td>the macro's Playback Option</td><td>a dropdown of 4 options; the byte was not located. <b>Only by decompilation.</b></td></tr>
 <tr><td class="m">which of the two inert ones<br>is LightDisable</td><td>107 and 108 do nothing, so observing does not separate them. Only by decompiling the save routine — and that gives the <b>name</b>, not the behaviour. Of no practical value</td></tr>
 <tr><td class="m">bytes 72–107</td><td>partial: 75–77 = number of color stops. Same method</td></tr>
