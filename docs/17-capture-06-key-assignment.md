@@ -114,12 +114,37 @@ the application.
 |---|---|---|
 | `0xB4` | Macro | [C] — `05-macros` |
 | `0xB8` | Text | [C] |
-| `0x00` | Default / Disable on a G key | [C] |
+| `0x00` | Disable | [C] |
 
 On a G key, Default and Disable both write `0x00`, because a G key's native
-function is already "nothing". **To tell the two apart you would have to
-disable an ordinary key** (e.g. the A key, slot 21): Default should restore
-`0x04` and Disable should write some code of its own.  [?]
+function is already "nothing". To tell the two apart you had to disable an
+ordinary key.
+
+**Solved in `18-capture-07-final.md` §1**, by capture: on the A key, Disable
+writes `0x00` and Default writes `0x04`, the key's own HID usage. There is no
+dedicated Disable code -- it **is** `0x00`.
+
+### 5.1 And what `0x00` does, measured on the keyboard  [C]
+
+> 2026-10-17. The capture shows what the app **writes**; this shows what the
+> firmware **does**, which is another question.
+
+With byte 222 (slot 102, the `ScrLk` key) set to `0x00`, the key **stops
+emitting entirely**: two presses produced no X11 event at all. The `Pause` key,
+untouched, served as a control in the same listening window and showed up
+normally -- the difference belongs to the keyboard, not to the observer.
+
+    ScrLk with 0x00   ->  two presses, nothing
+    Pause (control)   ->  press/release, keycode 127
+
+So `0x00` is **not** "fall back to native behaviour": it is silence. That also
+confirms, from the effect side, why an ordinary key's factory value is its own
+HID code and not `0x00` -- the assignment table has no notion of "empty =
+default".
+
+Useful in practice: a key can be turned off **in the keyboard's memory**, with
+no service running and valid on any computer. CapsLock, the Windows key, or
+whatever annoys you. Measured with `tools/listen_x11.py`.
 
 ## 6. Map of the code space
 

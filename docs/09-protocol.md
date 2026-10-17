@@ -311,7 +311,7 @@ The KEY ASSIGNMENT dialog offers nine types per key, and they all write into the
 
 | Range | Meaning |
 |---|---|
-| `0x00` | no function (Default/Disable on a G key) |
+| `0x00` | **Disable** — the key stops emitting; it is not "use the native one" (`docs/17` §5.1) |
 | `0x04`–`0xE7` (low) | HID usage — "Keyboard" type (e.g. `0xE0` = LeftCtrl) |
 | `0xA5`–`0xAB` | Multimedia |
 | `0xB4` | Macro |

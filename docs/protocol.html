@@ -832,12 +832,17 @@ any function.</p>
 </div>
 
 <div class="col">
-<p>Cross-confirmation: the Multimedia codes (<code>a5</code>–<code>a9</code>)
-are exactly the ones the factory table already carries in the slots of the
-physical media keys — 105, 106, 107, 115 and 116.</p>
-<p><b>Disable writes <code>0x00</code>; Default restores the native HID.</b>
+<p>A cross-check: the Multimedia codes (<code>a5</code>–<code>a9</code>) are
+exactly the ones the factory table already carries in the slots of the physical
+media keys — 105, 106, 107, 115 and 116.</p>
+<p><b>Disable writes <code>0x00</code>; Default restores the native HID usage.</b>
 Modifiers are ordinary keys: Ctrl is HID <code>0xE0</code>, there is no
 modifier field.</p>
+<p>And <code>0x00</code> really is <b>silence</b>, not "use the native one":
+with <code>ScrLk</code>'s byte zeroed, the key stopped emitting entirely — two
+presses, no event —, while the untouched <code>Pause</code> showed up in
+the same listening window as a control. A key can be turned off in the
+keyboard's memory, with no service running. <span class="conf c-c">C</span></p>
 </div>
 
 <div class="note">
