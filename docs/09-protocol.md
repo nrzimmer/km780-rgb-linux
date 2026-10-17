@@ -696,7 +696,7 @@ ruled out in the test. It still has no known function. [?]
 | 10 | bytes 72–107 of the config block | partial: 75–77 = number of color stops |
 | 11 | bytes 6–7 of the header | zero across the 6,277 packets captured [C] |
 | 11b | `buf[5]` | **carries Ripple/Sonic in the `0x0B`**; zero everywhere else [C] |
-| 12 | device→host events on EP `0x83` | **three formats mapped** — `22-gaps-solved.md` §2. `f6 01 XX YY` = (column, row), 13×9 matrix; `02 04 M 09 N` = **brightness**; `02 04 M 08 01` = mode/presence; only `02 04 M 04 …` remains [?] |
+| 12 | device→host events on EP `0x83` | **three formats mapped**, and the **15×9 matrix surveyed key by key** — `25-physical-matrix.md`, 122 keys, validates 100% of the 1,535 events captured. `02 04 M 09 N` = **brightness**; `02 04 M 08 01` = mode/presence; only `02 04 M 04 …` remains [?] |
 | 13 | effect IDs `0x05` and `0x06` | they do not exist in the UI [?] |
 | 14 | key function codes | **solved** — section 5.2 and `docs/17` |
 | 14b | the content of a **Text** | **does not go to the keyboard**, not even on "Save to Device Memory" — `docs/18` §6 [C] |

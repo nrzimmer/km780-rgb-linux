@@ -181,12 +181,16 @@ via the keyboard's keys, just like the mode. Whoever wants to follow it listens
 to EP `0x83`; whoever does not listen must re-read with `0x82` instead of
 assuming.
 
-### 2.3 The physical matrix has 13 columns × 9 rows  [C]
+### 2.3 The physical matrix is 15 columns × 9 rows  [C]
 
-Of the 1,535 `f6 01 <column> <row>` events: column from `01` to `0d` (13),
-row from `00` to `08` (9). Bytes 4–7 always zero. 53 distinct pairs
-observed — fewer than the 132 keys, because only part of the keyboard was
-touched during the captures.
+> **Corrected.** This section said 13 × 9, deduced from the range of values
+> appearing in the captures (column `01`–`0d`). The range was short: **column 0
+> was never pressed at all on Windows** — those are the G keys, MR and the
+> modes, which do not type. Mapped on hardware, it is **15 × 9**, with 122 of
+> the 135 positions occupied. Full map in `25-physical-matrix.md`.
+
+Of the 1,535 `f6 01 <column> <row>` events in the captures: 53 distinct pairs,
+fewer than the 122 keys, because only part of the keyboard was touched.
 
 ---
 

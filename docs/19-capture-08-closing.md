@@ -90,10 +90,16 @@ Nine presses in three groups of three, isolated in time:
     t=496.04   04 07  x3
     t=499.46   04 07  x3
 
-The Timer key **has no HID usage** — it is a proprietary G.SKILL function.
-Even so it emits `f6 01 04 07`. That is, the `f6 01 XX YY` event covers **every
-physical key**, including the ones that do not exist in HID, which makes it the
-complete path for mapping the physical matrix. Reinforces
+> **CORRECTED in `25-physical-matrix.md`.** The coordinate `04 07` belongs to
+> the **BRIGHTNESS** key, not to Timer. The capture itself proves it: each
+> `f6 (4,7)` is followed 40 ms later by a brightness event, five times, at
+> levels 3,2,1,0,4. Timer is the "isolated pair at `04 08`" mentioned below.
+> Confirmed key by key on the hardware.
+
+The Timer key **has no HID usage** — it is a G.SKILL proprietary function. Even
+so it emits `f6 01 04 08`. In other words, the `f6 01 XX YY` event covers
+**every physical key**, including the ones that do not exist in HID, which
+makes it the complete route for mapping the physical matrix. It reinforces
 `18-capture-07-final.md` §3.
 
 Another isolated pair appeared at `04 08` (row 8).
