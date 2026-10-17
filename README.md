@@ -32,6 +32,7 @@ goal of this project.
 | Physical matrix map (column, row) | **method known** — `docs/18` §3 |
 | Byte-by-byte protocol specification | Phase 1 closed — `docs/09-protocol.md` |
 | **Color protocol validated on hardware** | **done** — writes and reads confirmed |
+| **`km780ctl.py` exercised end to end** | **done** — 8 steps, diffs checked, `STATUS.md` |
 | **Intensity (brightness)** | **solved** — byte 11 of `0x02`, `docs/13` |
 | Read-only probing tool | ready — `tools/km780.py` |
 | USB capture of the vendor software (Windows) | **done** — `docs/12` to `docs/21`, 11 captures |
@@ -52,10 +53,15 @@ goal of this project.
 
 ## Using it
 
-    tools/km780ctl.py info                 current state, no writing
-    tools/km780ctl.py set F5=ff0000 A=blue paints keys
-    tools/km780ctl.py brightness 4         intensity 0-4
-    tools/km780ctl.py backup mine.json     save everything before playing
+`pyusb` lives in `venv/`, which is not versioned, so every command runs with
+its interpreter (`tools/km780ctl.py` on its own gives `No module named 'usb'`):
+
+    venv/bin/python tools/km780ctl.py info                 current state, no writing
+    venv/bin/python tools/km780ctl.py set F5=ff0000 A=blue paints keys
+    venv/bin/python tools/km780ctl.py brightness 4         intensity 0-4
+    venv/bin/python tools/km780ctl.py backup mine.json     save everything before playing
+
+Recreating the venv: `python3 -m venv venv && venv/bin/pip install pyusb`.
 
 `-n` shows what it would do without writing. `tools/test_km780.py` validates
 the logic against a simulated keyboard — it does not replace running on the

@@ -7,40 +7,57 @@
 
 ## The goal, and how much of it is left
 
-Control the KM780's RGB on Linux. **The protocol needed for that is
-documented and validated on hardware.** What is left is exercising the tool.
+Control the KM780's RGB on Linux. **Done.** The protocol is documented and
+validated on hardware, and the tooling was exercised end to end on 2026-10-17:
+color write, brightness, full repaint and restore, all checked by diff against
+a prior portrait.
 
 | | |
 |---|---|
 | Protocol specification | `docs/09-protocol.md`, canonical |
 | Visual view | `docs/protocol.html` — opens in a browser, or claude.ai/artifact/K9mu4VENac49xSE2cR3YXM |
-| Color tool | `tools/km780ctl.py` — **writing never exercised end to end** |
+| Color tooling | `tools/km780ctl.py` — **exercised end to end on hardware** |
 | Hardware-free tests | `tools/test_km780.py` — 24, all passing |
 
-## NEXT STEP: exercise `km780ctl.py` end to end
+## `pyusb` is in the venv, not in the system
 
-The library underneath **has already written color to the keyboard**
-successfully — that is what `km780slots.py` did to identify the 18 special
-keys, with a clean, checked restore. What never ran is `km780ctl.py` itself.
+Every command runs with the venv's interpreter:
 
-Proposed sequence, in this order, with the keyboard plugged in:
+    venv/bin/python tools/km780ctl.py info
 
-    tools/km780ctl.py info                    # so le
-    tools/km780ctl.py backup state.json       # read only, saves everything
-    tools/km780ctl.py -n all blue             # dry run, does not write
-    tools/km780ctl.py set F5=ff0000 G1=blue   # the first real write
-    tools/km780ctl.py colors                  # check what stuck
-    tools/km780ctl.py brightness 2            # read-change-write on 0x02
-    tools/km780ctl.py todas 101010
-    tools/km780ctl.py restore state.json      # puts everything back
+`tools/km780ctl.py info` on its own fails with `ModuleNotFoundError: No module
+named 'usb'` — the shebang is `/usr/bin/env python3` and Fedora does not have
+pyusb installed globally. The venv (pyusb 1.3.1) is not versioned; recreate it
+with `python3 -m venv venv && venv/bin/pip install pyusb`.
 
-After each write, look at the keyboard. **The active mode has to have no
-effect** (2 is static); on a mode with an effect the animation overwrites the
-matrix and nothing the tool writes will show up.
+## End-to-end exercise: done, eight steps, all checked
 
-If it all passes, the project's stated goal is met and what comes next is
-convenience: a `--profile` with saved themes, restoring at boot, packaging.
+Run on 2026-10-17 with the keyboard plugged in, active mode 2 (static):
 
+| Step | Result |
+|---|---|
+| `info` | active mode 2; brightness 4/4/4; Wave effect only on 3 |
+| `backup state.json` | the 3 modes, colors + payload |
+| `-n all blue` | a dry run, nothing written |
+| `set F5=ff0000 G1=blue` | slots 45 and 0; **diff: exactly 5 bytes**, across the 3 channels, mode payloads intact |
+| `colors` | the re-read confirms `F5=ff0000`, `G1=0000ff` |
+| `brightness 2` | **diff: only byte 11 of mode 2**; colors intact |
+| `all 101010` | 144 slots |
+| `restore state.json` | **diff against the initial portrait: zero difference** across the 3 modes, colors and payload |
+
+The two diffs in bold are what matters: a write touches only what was asked for,
+and read-change-write preserves the unknown fields on real hardware — not just
+in `test_km780.py`'s simulator.
+
+## NEXT STEP: convenience, or closing a protocol gap
+
+The declared goal is met. Two directions, neither blocking the other:
+
+- **Usability** — `--profile` with saved themes, restoring at boot (a systemd
+  user unit), packaging. Needs no more reverse engineering.
+- **Protocol** — the gaps in the table below. The highest-yield one is
+  decompiling `FUN_100d5060` (6,911 B), which closes `0x0E`/`0x0F` and
+  probably gives the name of the inert `LightDisable`.
 
 ## Hardware state
 
