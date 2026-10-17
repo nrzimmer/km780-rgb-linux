@@ -42,9 +42,14 @@ Walking the 7 items in the list in UI order, on a G key:
 | `0xC7` | **Copy** |
 | `0xC8` | Paste |
 
-**There is a hole at `0xC3` and `0xC4`.** The prediction in
+**The dialog offers neither `0xC3` nor `0xC4`.** The prediction in
 `17-capture-06-key-assignment.md` §4 (a sequential `C2`-`C8` range) was
 **wrong** and is corrected here.
+
+> **Corrected on 2026-10-17.** This section used to say "there is a hole at
+> `C3` and `C4`". The hole is the **UI's**: both codes exist and work --
+> `C3` = `Super`+`Tab`, `C4` = `Alt`+`Tab` --, measured on hardware. The range
+> is contiguous. See `docs/17` §4.1.
 
 The alignment validates itself: Copy landed on `0xC7`, the same value capture
 `06` had measured independently.

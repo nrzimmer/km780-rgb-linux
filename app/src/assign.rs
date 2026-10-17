@@ -131,12 +131,20 @@ static MOUSE: &[Function] = &[
     f(0xD5, "Double click"),
 ];
 
-/// `docs/17` §4. **It is not contiguous**: there is a hole at `C3` and `C4`,
-/// found by walking all seven in capture 08.
+/// `docs/17` §4. Nine codes, **contiguous**.
+///
+/// `C3` and `C4` were taken for a hole because the capture walked the seven
+/// items the official dialog offers, and the dialog does not list these two.
+/// They exist: measured on hardware on 2026-10-17, they come out as
+/// `Super`+`Tab` and `Alt`+`Tab` (`docs/17` §4.1). The second case of a
+/// feature the firmware has and the official app hides -- the first is effect
+/// `0x06`.
 static SHORTCUTS: &[Function] = &[
     f(0xC0, "Launch Task Manager"),
     f(0xC1, "Open Start menu"),
     f(0xC2, "Show desktop"),
+    f(0xC3, "Task view (Super+Tab)"),
+    f(0xC4, "Switch window (Alt+Tab)"),
     f(0xC5, "Close active window"),
     f(0xC6, "Cut"),
     f(0xC7, "Copy"),

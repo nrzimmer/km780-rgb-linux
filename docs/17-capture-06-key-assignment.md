@@ -65,20 +65,48 @@ a key.
 
 ## 4. Windows Shortcuts  [C]
 
-> **Corrected in `19-capture-08-closing.md` §2.** The first version of this
-> doc predicted a contiguous `C2`-`C8` range from the single measured item
-> (Copy = `0xC7`). Capture `08` went through all seven and showed that it is
-> **not contiguous**: there is a hole at `C3` and `C4`.
+> **Corrected in `19-capture-08-closing.md` §2.** The first version of this doc
+> predicted a contiguous `C2`-`C8` range from the single measured item
+> (Copy = `0xC7`). Capture `08` walked all seven and showed that the **app does
+> not offer** `C3` and `C4`.
+>
+> **Corrected again on 2026-10-17**: the hole was the UI's, not the firmware's.
+> See §4.1.
 
 | Code | Function |
 |---|---|
 | `0xC0` | Launch Task Manager |
 | `0xC1` | Open Start Menu |
 | `0xC2` | Show Desktop |
+| `0xC3` | **Task View** (`Super`+`Tab`) — outside the official UI |
+| `0xC4` | **Switch window** (`Alt`+`Tab`) — outside the official UI |
 | `0xC5` | Close Active Window |
 | `0xC6` | Cut |
 | `0xC7` | **Copy** |
 | `0xC8` | Paste |
+
+### 4.1 The hole at `C3`/`C4` was the UI's, not the firmware's  [C]
+
+> Measured on 2026-10-17, assigning each code to byte 164 (the Timer key) with
+> the app in `app/` and reading what X11 receives.
+
+    0xC3  ->  Super_L + Tab   both in the same millisecond
+    0xC4  ->  Alt_L   + Tab   likewise
+
+On Windows they are **Task View** and **switch window**. The earlier diagnosis
+-- "the range is not contiguous" -- was right about the capture and wrong about
+the device: capture `08` walked the **seven items the dialog offers**, and the
+dialog simply does not list these two. The range `0xC0`-`0xC8` is **contiguous
+and complete**, nine codes.
+
+It is the second known case of a feature the firmware has and the official app
+does not expose -- the first is effect `0x06` (`docs/27` §10). It is worth a
+general warning: **absence in a capture proves absence in the UI, not absence
+in the device.**
+
+Since both are combinations with `Tab`, on Linux the effect depends on the
+window manager; in i3 with no binding for `Super`+`Tab`, only the `Tab` reaches
+the application.
 
 ## 5. Macro, Text, Default, Disable
 
@@ -102,7 +130,7 @@ disable an ordinary key** (e.g. the A key, slot 21): Default should restore
 | `0xA5`–`0xAB` | Multimedia |
 | `0xB4` | Macro |
 | `0xB8` | Text |
-| `0xC0`–`0xC8` | Windows Shortcuts (with a hole at `C3`, `C4`) |
+| `0xC0`–`0xC8` | Windows Shortcuts (nine, contiguous — see §4.1) |
 | `0xCE`–`0xD5` | Mouse Function |
 
 The high ranges do not collide with the HID usages the keyboard uses

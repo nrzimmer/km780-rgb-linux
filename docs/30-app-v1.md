@@ -202,7 +202,7 @@ ends up bigger than the window:
 | Keyboard | each key's HID usage -- makes the key **act as another one** |
 | Multimedia | `0xA5`-`0xAB`, do `docs/17` §3 |
 | Mouse | `0xCE`-`0xD5`, do `docs/17` §2 |
-| Windows | `0xC0`-`0xC8`, with the `C3`/`C4` hole from `docs/17` §4 |
+| Windows | `0xC0`-`0xC8`, os nove, do `docs/17` §4 |
 
 The Keyboard table is **generated** from the same slot list that
 `docs/protocol.html` publishes, filtered down to real keyboard HID

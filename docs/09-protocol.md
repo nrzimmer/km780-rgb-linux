@@ -316,7 +316,7 @@ The KEY ASSIGNMENT dialog offers nine types per key, and they all write into the
 | `0xA5`–`0xAB` | Multimedia |
 | `0xB4` | Macro |
 | `0xB8` | Text |
-| `0xC0`–`0xC8` | Windows Shortcuts (with a hole at `C3`, `C4`) |
+| `0xC0`–`0xC8` | Windows Shortcuts — nine, **contiguous** (`docs/17` §4.1) |
 | `0xCE`–`0xD5` | Mouse Function |
 
 The complete map, item by item, is in `17-capture-06-key-assignment.md`. The
