@@ -628,7 +628,8 @@ exist in the protocol</b>. There are 3 modes.</p>
   <div class="fld" style="--c:var(--f-data);flex:3 1 18px"><span class="off">12–14</span><span class="nm">direction</span></div>
   <div class="fld dash" style="--c:var(--f-data);flex:12 1 70px"><span class="off">15–71</span><span class="nm">4 B records · duration</span><span class="vl">inferred</span></div>
   <div class="fld unk" style="--c:var(--f-unk);flex:8 1 60px"><span class="off">72–107</span><span class="nm">config · 75–77 = nº de paradas</span></div>
-  <div class="fld dash" style="--c:var(--f-data);flex:3 1 22px"><span class="off">108–119</span><span class="nm">toggles and 3 RGB triples</span></div>
+  <div class="fld" style="--c:var(--f-cmd);flex:1 1 7px"><span class="off">109</span><span class="nm">Win lock</span><span class="vl">0/1</span></div>
+  <div class="fld" style="--c:var(--f-data);flex:3 1 22px"><span class="off">110–118</span><span class="nm">3 RGB triples</span></div>
   <div class="fld" style="--c:var(--f-data);flex:30 1 150px"><span class="off">120–263</span><span class="nm">key assignment table · 144 slots, 1 byte each</span></div>
 </div>
 </div>
@@ -646,6 +647,40 @@ exist in the protocol</b>. There are 3 modes.</p>
   <span class="conf c-c">C</span>: the unknown ones travel intact through the
   round-trip. And, since the M1/M2/M3 keys switch the mode with no software,
   re-read the active mode with <code>0x81</code> instead of assuming the last value written.</p>
+</div>
+
+<h3>Byte 109: o Windows key lock</h3>
+<div class="col">
+<p>Found by accident, and the accident is the method. During the matrix
+collection the bag-symbol key was pressed, and i3's <code>Win+E</code> stopped
+working — <b>the letter went through</b>, the Win did not count as a modifier.</p>
+<p>Comparing the active mode with a portrait taken before touching anything,
+<b>a single byte of the 264 had changed</b>: 109, from <code>00</code> to
+<code>01</code>, and only in the active mode. Pressing the key again it went back
+and the Win came back with it. <span class="conf c-c">C</span></p>
+<p>Two things close there: the <b>bag key is the Windows key lock</b> — the
+third of the column-4 trio, along with brightness <code>(4,7)</code> and timer
+<code>(4,8)</code> — and the lock is <b>not</b> done by zeroing the key in the
+assignment table: bytes 120–263 did not change. It is a flag of its own.</p>
+</div>
+
+<div class="note">
+  <div class="hd">And it corrects the three RGB triples, which were shifted</div>
+  <p>The specification gave <b>109–117</b> as three RGB triples, "pure green
+  from the factory". With 109 being the lock, the triples can only start at
+  <b>110</b> — and read from there they are <code>(255,0,0)</code> three times:
+  <b>red</b>, not green. The one-byte error was what shifted
+  <code>(255,0,0)</code> into <code>(0,255,0)</code>.</p>
+  <p>An independent confirmation: mode 1's LED matrix has <b>127 slots at
+  exactly <code>ff0000</code></b>. The stored triple and the painted matrix
+  agree.</p>
+</div>
+
+<div class="col">
+<p><b>The method is worth more than the finding.</b> The byte came out of a
+diff, not of a sweep: there was a complete portrait taken before touching
+anything, and an observable change in behaviour. Comparing the two gave the exact byte,
+first time, <b>without writing anything</b>.</p>
 </div>
 
 <h3>Polling rate · byte 8</h3>
@@ -973,8 +1008,8 @@ left, and why.</p>
 <tr><td class="m">how to close the 0x16<br>session</td><td>no observed command closes it. Today the only way is a USB reset</td></tr>
 <tr><td class="m">LED slot of each<br>special key</td><td>the groups are known from the HID usage; which slot is which key inside the group only comes out by <b>painting a slot and looking</b></td></tr>
 <tr><td>the macro's Playback Option</td><td>a dropdown of 4 options; the byte was not located. <b>Only by decompilation.</b></td></tr>
-<tr><td class="m">byte 108 vs byte 119</td><td>they are two distinct toggles (all lighting, volume display); which is which is still to be said. <b>Settleable by experiment</b> — see below.</td></tr>
-<tr><td class="m">bytes 72–107</td><td>partial: 75–77 = number of color stops. <b>Settleable by experiment.</b></td></tr>
+<tr><td class="m">byte 108 vs byte 119</td><td>they are two distinct toggles (all lighting, volume display); which is which is still to be said. <b>Settleable without writing</b>: snapshot, work the control from the keyboard, diff — that is how 109 came out</td></tr>
+<tr><td class="m">bytes 72–107</td><td>partial: 75–77 = number of color stops. Same method</td></tr>
 <tr><td class="m">the 02 04 M 04 … event</td><td>6 occurrences, meaning unknown. Listen to EP <code>0x83</code> while working the keyboard.</td></tr>
 <tr><td>LED Sleep</td><td>the control was never captured</td></tr>
 <tr><td class="m">slots 16, 32, 68, 71, 88</td><td>they were once listed as having no physical key; the evidence did not hold. They do have a real virtual-key. <b>Settleable by experiment</b> — paint and look</td></tr>
@@ -993,9 +1028,11 @@ left, and why.</p>
   byte, write it back and look at the keyboard</b>. The items marked
   "settleable by experiment" become half an hour at the bench instead of
   reverse engineering.</p>
-  <p>With one caveat: this <b>writes</b> to the keyboard. The command is known and
-  the round-trip is symmetric, which is far safer than probing commands — but
-  it is a write. With a backup of the mode read beforehand, and one byte at a time.</p>
+  <p>And there is a cheaper route still, which has already produced a result:
+  <b>no writing needed at all</b>. Take a portrait of the 3 modes, work the
+  control <b>on the keyboard itself</b>, and compare. That is how byte 109
+  turned up — a single byte different out of 264, first time. It only works for
+  what the keyboard can change on its own; for the rest, then yes, writing, with a backup and one byte at a time.</p>
 </div>
 
 <h3>How to reproduce</h3>
