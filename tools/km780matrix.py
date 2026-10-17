@@ -3,12 +3,20 @@
 
     tools/km780matrix.py [file.json]
 
-The keyboard emits `f6 01 <column> <row>` on EP 0x83 for every key pressed
-(docs/18 §3). This asks for one key at a time and records the coordinate that
-arrives. READ ONLY -- no write command is sent.
+The keyboard emits `f6 01 <column> <row>` on EP 0x83 for every key pressed --
+but only after command 0x16, which opens the configuration session. This opens
+the session, asks for one key at a time, records the coordinate that arrives,
+and at the end does a USB reset to give the keyboard back to normal.
+
+READ BEFORE RUNNING
+  * while the session is open **the keyboard does not type** (docs/24). That is
+    expected and comes back on its own at the end.
+  * because of that, do NOT count on Ctrl+C: the keyboard may not manage to
+    send it. The script has its own time limit and ends by itself.
+  * the only write command sent is `07 16 01`. The rest is reads.
 
 How to use: press the key it asks for. If the key does not exist on your
-keyboard, wait a few seconds and it skips on. Ctrl+C saves what it already has.
+keyboard, wait and it skips on its own.
 
 During collection the terminal echo is turned off, otherwise what you type
 shows on screen and clogs the buffer.
@@ -20,6 +28,7 @@ import usb.core
 
 WAIT = 6.0            # seconds before considering "the key does not exist"
 DEBOUNCE = 0.35       # drains repeated events from the same press
+TOTAL_LIMIT = 900     # absolute ceiling in seconds; the script ends by itself
 
 # Order of asking: by physical row, so the user does not get lost.
 # The 19 "synthetic" keys (G, media, MR/M1/M2/M3, brightness, timer and the bag
@@ -73,6 +82,7 @@ class EchoOff:
         except termios.error:
             pass
 
+
 def wait_key(kb, limit):
     """Returns (kind, detail, bytes) of the first event, or None on timeout.
 
@@ -107,6 +117,7 @@ def wait_key(kb, limit):
                 pass
     return found
 
+
 def grid(mapping):
     if not mapping:
         return
@@ -117,17 +128,24 @@ def grid(mapping):
     for l in rows:
         print('  r%-3d' % l + ''.join((mapping.get((c, l), '.')).rjust(width) for c in cols))
 
+
 def main():
     target = sys.argv[1] if len(sys.argv) > 1 else 'physical-matrix.json'
     mapping, skipped, log = {}, [], []
     print(__doc__)
     print('Saving to %s. Starting in 3s...\n' % target)
     time.sleep(3)
-    with K.Keyboard() as kb, EchoOff():
+    t_start = time.time()
+    # Session does the USB reset in __exit__, so the keyboard comes back to
+    # normal even on an exception, Ctrl+C or SIGTERM.
+    with K.Keyboard() as kb, K.Session(kb), EchoOff():
         try:
             for title, keys in ROWS:
                 print('\n=== %s ===' % title)
                 for name in keys:
+                    if time.time() - t_start > TOTAL_LIMIT:
+                        print('\n  [time limit reached -- finishing]')
+                        raise KeyboardInterrupt
                     short = name.split(' (')[0]
                     print('  press  %-16s ' % short, end='', flush=True)
                     ev = wait_key(kb, WAIT)
@@ -152,7 +170,8 @@ def main():
                     else:
                         print('event %s   [%s]' % (kind, raw.hex(' ')))
         except KeyboardInterrupt:
-            print('\n\ninterrupted -- saving what we have')
+            print('\n\nfinishing -- saving what we have')
+        print('\nclosing the session and resetting USB (the keyboard types again)...')
     json.dump({'map': {'%d,%d' % k: v for k, v in mapping.items()},
                'skipped': skipped, 'events': log},
               open(target, 'w'), indent=1, ensure_ascii=False)
@@ -164,5 +183,6 @@ def main():
     grid(mapping)
     if skipped:
         print('\nskipped: ' + ', '.join(skipped))
+
 
 main()

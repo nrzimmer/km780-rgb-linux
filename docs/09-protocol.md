@@ -653,6 +653,17 @@ It is 28 packets in 3.2 s:
 `0x0D` appears as a begin/end pair (arg `00` before the writes, `01` after).
 `0x16` is always the first message.
 
+> **The `0x16` is what turns on the `f6` key report** on EP `0x83` — tested on
+> hardware, `24-session-0x16.md` §1. That is why no capture shows what turns
+> it on: the keyboard already came with it on from an earlier run of the software.
+>
+> **No command closes the session**, and while it is open the keyboard may
+> stop typing. What brings it back is a **USB reset**. Any tool that
+> sends `0x16` has to guarantee the reset on the way out. §2 to §4 of the same document.
+
+The `07 07 00 15` is **not** what turns the `f6` on — it was the prime suspect and was
+ruled out in the test. It still has no known function. [?]
+
 ---
 
 ## 9. Known gaps

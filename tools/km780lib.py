@@ -99,6 +99,7 @@ for _i, _n in enumerate(SLOTS):
 # slots changes with the mode. See docs/23 §6.
 NO_KEY = (35, 80, 85, 91, 129)
 
+
 def slot_of(name):
     """Accepts the key name or the slot number. Clear error if neither exists."""
     s = str(name).strip()
@@ -112,6 +113,7 @@ def slot_of(name):
         raise ValueError('unknown key: %r (use the name as in '
                          'docs/10-key-map.md, or the slot number)' % name)
     return k
+
 
 def color_of(txt):
     """'ff0000' | 'f00' | 'red' -> (r, g, b)."""
@@ -128,6 +130,7 @@ def color_of(txt):
     if len(t) != 6:
         raise ValueError('invalid color: %r (use RRGGBB, RGB or a name)' % txt)
     return tuple(int(t[i:i + 2], 16) for i in (0, 2, 4))
+
 
 class Keyboard:
     def __init__(self):
@@ -181,6 +184,12 @@ class Keyboard:
         d = bytes(self.dev.ctrl_transfer(REQ_IN, GET_REPORT, WVALUE, WINDEX, PKT, TIMEOUT))
         time.sleep(wait)
         return d
+
+    def reset(self):
+        """USB reset -- same as replugging. It is the universal undo: when the
+        keyboard gets into a strange state, this brings it back. See docs/24."""
+        self.dev.reset()
+        time.sleep(2.5)
 
     def events(self, seconds, callback):
         """Listens on EP 0x83. Mixes ACKs with the keyboard's spontaneous events."""
@@ -237,3 +246,35 @@ class Keyboard:
             self.write(self.build(LED_SET, mode=mode, b3=ch, payload=bytes(data)),
                        wait=0.02)
         time.sleep(0.1)      # the official app's extra wait after the 3rd channel
+
+
+class Session:
+    """Opens the configuration session with 0x16 and GUARANTEES the way back.
+
+        with K.Keyboard() as kb, K.Session(kb):
+            ...                       # here the keyboard emits f6 on EP 0x83
+
+    0x16 turns on key reporting (f6). **While the session is open the keyboard
+    stops typing** -- observed on 2026-10-16, see docs/24. No observed command
+    closes the session: the official software never sends one. What brings it
+    back is the USB reset, and that is why this context manager exists.
+
+    The reset runs in __exit__, so it also runs on an exception, Ctrl+C or
+    SIGTERM -- as long as the process is not killed with SIGKILL.
+    """
+    def __init__(self, kb, do_reset=True):
+        self.kb = kb
+        self.do_reset = do_reset
+
+    def __enter__(self):
+        self.kb.write(self.kb.build(0x16, mode=0x01), wait=0.3)
+        return self
+
+    def __exit__(self, *a):
+        if self.do_reset:
+            try:
+                self.kb.reset()
+            except Exception as e:
+                print('WARNING: the USB reset failed (%s). Replug the keyboard.' % e,
+                      file=sys.stderr)
+        return False
