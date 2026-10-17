@@ -161,3 +161,59 @@ it waits for authorization — `tools/km780exp.py` does it with a backup.
 
 No writes. The backup of the state found is in `backup-first-contact.json`
 (outside the index, being machine-specific).
+
+---
+
+## 8. Byte 109 is the Windows key lock  [C]
+
+Discovered by accident, and the accident is the method: while collecting the
+matrix the bag-symbol key was pressed, and afterwards i3's `Win+E` stopped
+working — **the letter went through**, the Win did not count as a modifier. The
+signature of a *Windows key lock*.
+
+Comparing the active mode against the backup taken before anything, **a single
+byte of the 264 had changed**:
+
+    mode 1: no difference
+    mode 2: byte 109:  00 -> 01      <- the active mode
+    mode 3: no difference
+
+Pressing the same key again, the byte went back to `00`, Win worked again, and
+the diff against the backup went to zero.
+
+Two things this settles:
+
+- **the bag-symbol key is the Windows key lock** — the third of the column-4
+  trio of the matrix, along with brightness `(4,7)` and timer `(4,8)`
+- **the lock is not done by zeroing the key in the assignment table**: bytes
+  120–263 did not change. It is a flag of its own.
+
+### And it corrects the three RGB triples  [C]
+
+`09-protocol.md` §5 said:
+
+> | 109–117 | 9 | **three RGB triples** stored in the profile (pure green from
+> the factory) | [I] |
+
+With 109 being the lock, the triples can only start at **110**. And read from
+there they are:
+
+    bytes 110-112: (255, 0, 0)
+    bytes 113-115: (255, 0, 0)
+    bytes 116-118: (255, 0, 0)
+
+**Pure red, three times** — not green. The one-byte error was what shifted
+`(255,0,0)` into `(0,255,0)`.
+
+The independent confirmation: mode 1's LED matrix has **127 slots at exactly
+`ff0000`**. The stored triple and the painted matrix agree.
+
+### The method, which is worth more than the finding
+
+The byte was located in a diff, not in a sweep: there was a **complete portrait
+taken before touching anything**, and an observable change in behaviour.
+Comparing the two gave the exact byte, first time, without writing anything.
+
+It stands as the procedure for the fields still missing (108 vs 119, 72–107):
+take the portrait, work the control **on the keyboard itself**, and compare. No
+writing needed at all.
