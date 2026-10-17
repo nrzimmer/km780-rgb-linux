@@ -28,7 +28,9 @@ G.SKILL's. **The decisions are made and documented in
 Summary: egui/eframe 0.37, hidapi 2.6.7 with the `linux-static-libusb` backend
 (not hidraw, because `uaccess` gives an ACL to the USB node but not to
 `hidraw` — measured). v1 = read + static color, with **batch editing and an
-explicit `Apply`**: nothing goes to the keyboard on every click.
+explicit `Apply`**: nothing goes to the keyboard on every click. On Windows the
+backend is `windows-native`, not libusb — libusb there would mean swapping the
+driver for WinUSB and would stop the keyboard being a keyboard.
 
 Start by reading `docs/29`.
 

@@ -53,6 +53,65 @@ libusb was chosen to preserve the "no root needed" property, which is a real
 advantage over the official app. The udev rule stays as a documented
 alternative if libusb ever becomes a nuisance.
 
+### On Windows it is the native backend — and libusb there would be a serious mistake
+
+The libusb choice applies **to Linux only**. On Windows the app uses
+`windows-native`, which is the system's HID API (`HidD_SetFeature` /
+`HidD_GetFeature`). There:
+
+- it **needs no driver** and **needs no administrator** — HID is accessible to
+  an ordinary user;
+- it is literally the path the official app uses, so it is proven to work:
+  `FUN_100d8fc0` calls `HidDevice_SetFeature`/`GetFeature`, which are wrappers
+  over that API.
+
+**Never use the libusb backend on Windows.** There libusb requires swapping the
+device's driver for WinUSB (via Zadig or similar), and that **would stop the
+keyboard being a keyboard** — Windows would stop treating it as input. It is the
+kind of mistake that makes the user reinstall a driver by hand.
+
+In `Cargo.toml` that is written as a per-target dependency:
+
+    [target.'cfg(target_os = "linux")'.dependencies]
+    hidapi = { version = "2.6.7", default-features = false,
+               features = ["linux-static-libusb"] }
+
+    [target.'cfg(target_os = "windows")'.dependencies]
+    hidapi = { version = "2.6.7", default-features = false,
+               features = ["windows-native"] }
+
+### What has not been verified on Windows yet  [?]
+
+There is no Windows machine available right now, so this stays as the first
+thing to check when there is one:
+
+- **Which device path to open.** Windows exposes **one entry per top-level
+  collection** (`...&Col01`, `&Col02`, …), and our command goes to interface 1,
+  which declares Mouse + System Control + Consumer Control + two vendor
+  collections (`FF00` and `FF01`, per the descriptor read from the keyboard —
+  see the box at the end of this section). `hid_enumerate` will list several
+  entries with the same VID/PID; the right one is the one that accepts Feature
+  report ID 7. It can be found by safe trial: open each one and do **only the
+  read** `0x81`, which is harmless.
+- **Windows restricts opening a HID keyboard/mouse with read access.** `hidapi`
+  already works around this by opening with zero access when needed, and Feature
+  reports work in that mode. Expected to work, not verified.
+
+The interface 1 descriptor, read from `/sys/bus/hid/devices/*28DA:1101*`, so you
+know what to expect in the enumeration:
+
+    report 0x01  Generic Desktop / Mouse
+    report 0x02  Generic Desktop 0x81-0x83   (System Control)
+    report 0x03  Consumer        0x00-0x2ff  (Consumer Control)
+    report 0x06  Vendor FF00, usage 0x30
+    report 0x07  Vendor FF01, usage 0x20     <-- ours
+    report 0x08  Keyboard/Keypad 0x00-0xff
+    report 0x09  Keyboard/Keypad 0xe0-0xe7 + 0x00-0x67
+
+**Report 0x07** is our command channel, and it appears under the vendor page
+`0xFF01`. That is a strong hint for picking the right device path on Windows:
+look for the collection whose usage page is `0xFF01`.
+
 A known pitfall: the libusb backend detaches the kernel driver from the
 interface it uses. Today `km780lib.py` does that and **gives the driver back**
 in `close()` (`attach_kernel_driver`). The app has to do the same in `Drop`, or
