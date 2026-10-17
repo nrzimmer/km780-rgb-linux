@@ -317,12 +317,109 @@ fn macro_erase(mode: u8) {
     }
 }
 
-/// `km780 --macro-name NAME`: writes the name of macro index 0 into the
-/// `0x0A` page `0x09` base.
-fn macro_name(name: &str) {
+/// ASCII text at the start of a payload, if there is any.
+///
+/// The database stores names in pure ASCII, zero-terminated. Any byte outside
+/// the printable range ends the read: it is a sign that what is there is not a
+/// name but a binary parameter -- subpages `02`/`05`/`08` are like that.
+fn ascii_prefix(payload: &[u8]) -> Option<String> {
+    let text: String = payload
+        .iter()
+        .take_while(|&&b| b.is_ascii_graphic() || b == b' ')
+        .map(|&b| b as char)
+        .collect();
+    if text.trim().is_empty() { None } else { Some(text) }
+}
+
+/// `km780 --base-read PAGE SUB`: reads **one** subpage, in hex and ASCII.
+///
+/// It exists to separate an address's content from the effect of read order: a
+/// lone read, in a lone process, has no earlier read to inherit an answer from.
+fn base_read(page: u8, sub: u8) {
     let kb = proto::Keyboard::open_device().expect("could not open");
-    kb.write_macro_name(0, name).expect("0x0a");
-    println!("macro 0 named {name:?} in the 0x0A page 0x09 base");
+    let d = kb.read_base(page, sub).expect("0x8a");
+    let head: Vec<String> = d[..24].iter().map(|b| format!("{b:02x}")).collect();
+    println!("page 0x{page:02x} sub 0x{sub:02x}");
+    println!("  hex   {}", head.join(" "));
+    println!("  ascii {:?}", ascii_prefix(&d));
+}
+
+/// `km780 --base-clear`: returns the name area of page `0x09` to the
+/// virgin default.
+fn base_clear() {
+    let kb = proto::Keyboard::open_device().expect("could not open");
+    let virgin = vec![0xFFu8; proto::PKT - proto::HDR];
+    for sub in 0..proto::Keyboard::SUBPAGES {
+        kb.write_base(proto::PAGE_MACRO_NAMES, sub, &virgin).expect("0x0a");
+    }
+    println!("page 0x09 cleared");
+}
+
+/// `km780 --base-dump`: reads the whole `0x0A` database with `0x8A` and shows
+/// whatever is in each subpage. **Read only.**
+///
+/// The pages are the ones in `docs/09` §7c: `0x00` profile and mode names,
+/// `0x09` macro and text names, and one per mode (`0x1b`/`0x1c`/`0x1d`).
+fn base_dump() {
+    let kb = proto::Keyboard::open_device().expect("could not open");
+    println!("opened: {}\n", kb.description);
+
+    let pages: Vec<(u8, u8, &str)> = vec![
+        (proto::PAGE_NAMES, 5, "names: profile and modes"),
+        (proto::PAGE_MACRO_NAMES, proto::Keyboard::SUBPAGES, "macro and text names"),
+        (proto::PAGE_MODE[0], 11, "mode 1 base"),
+        (proto::PAGE_MODE[1], 11, "mode 2 base"),
+        (proto::PAGE_MODE[2], 11, "mode 3 base"),
+    ];
+    for (page, subs, what) in pages {
+        println!("page 0x{page:02x} \u{2014} {what}");
+        for sub in 0..subs {
+            match kb.read_base(page, sub) {
+                Err(e) => println!("  sub 0x{sub:02x}: {e}"),
+                Ok(payload) => {
+                    // The first two subpages of the names page do not keep
+                    // what is written, and `0x00` still returns `0x02`'s
+                    // content. Saying so here avoids reading the mirror as if
+                    // it were one more name.
+                    let note = if page == proto::PAGE_MACRO_NAMES && sub < proto::Keyboard::FIRST_NAME_SUB {
+                        if sub == 0 { "   (mirror of sub 0x02; writes here are discarded)" }
+                        else { "   (writes here are discarded)" }
+                    } else {
+                        ""
+                    };
+                    let used = payload.iter().filter(|&&b| b != 0).count();
+                    if used == 0 {
+                        println!("  sub 0x{sub:02x}: zeroed{note}");
+                        continue;
+                    }
+                    if payload.iter().all(|&b| b == 0xFF) {
+                        println!("  sub 0x{sub:02x}: 0xFF \u{2014} never written{note}");
+                        continue;
+                    }
+                    match ascii_prefix(&payload) {
+                        Some(text) => println!("  sub 0x{sub:02x}: {text:?}{note}"),
+                        None => {
+                            let head: Vec<String> =
+                                payload[..16].iter().map(|b| format!("{b:02x}")).collect();
+                            println!(
+                                "  sub 0x{sub:02x}: {used} byte(s), {}",
+                                head.join(" ")
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        println!();
+    }
+}
+
+/// `km780 --macro-name NAME`: writes the name of macro index 0 into database
+/// `0x0A` page `0x09`.
+fn macro_name(name: &str, index: u8) {
+    let kb = proto::Keyboard::open_device().expect("could not open");
+    kb.write_macro_name(index, name).expect("0x0a");
+    println!("macro {index} named {name:?} in the 0x0A page 0x09 base");
 }
 
 /// `km780 --macro-list`: the macros saved in files, without touching the keyboard.
@@ -435,8 +532,8 @@ fn main() -> eframe::Result<()> {
     }
 
     if std::env::args().any(|a| a == "--hold") {
-        // Diagnostics: open and hold, to measure what the host loses
-        // while interface 1 is claimed.
+        // Diagnostic: opens and holds on, to measure what the host loses while
+        // interface 1 is claimed.
         let _kb = proto::Keyboard::open_device().expect("could not open");
         println!("holding for 8s");
         std::thread::sleep(std::time::Duration::from_secs(8));
@@ -452,7 +549,24 @@ fn main() -> eframe::Result<()> {
         return Ok(());
     }
     if let Some(p) = argv.iter().position(|a| a == "--macro-name") {
-        macro_name(&argv[p + 1]);
+        let index = argv.get(p + 2).and_then(|a| a.parse::<u8>().ok()).unwrap_or(0);
+        macro_name(&argv[p + 1], index);
+        return Ok(());
+    }
+    if let Some(p) = argv.iter().position(|a| a == "--base-read") {
+        let n = |i: usize| -> u8 {
+            let t = &argv[i];
+            u8::from_str_radix(t.trim_start_matches("0x"), 16).expect("hex")
+        };
+        base_read(n(p + 1), n(p + 2));
+        return Ok(());
+    }
+    if std::env::args().any(|a| a == "--base-clear") {
+        base_clear();
+        return Ok(());
+    }
+    if std::env::args().any(|a| a == "--base-dump") {
+        base_dump();
         return Ok(());
     }
     if std::env::args().any(|a| a == "--macro-import") {

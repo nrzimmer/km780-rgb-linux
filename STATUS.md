@@ -72,6 +72,13 @@ the G.SKILL UI offering macros only on the G keys is a firmware limit, not an
 interface choice. The app refuses `0xB4` outside G1–G6 with a warning naming
 the key. Details in `docs/09` §7b.2.
 
+**The `0x0A` base reader is done** (`--base-dump`, `--base-read`,
+`--base-clear`). It showed that page `0x09` has sixteen sub-pages, that only
+`0x02`–`0x0F` retain data, and that **the macro name was never stored on the
+keyboard — not even when the official app wrote it**, because it uses
+sub-page `0x00`, which discards. It also confirmed that byte 0 of sub-page
+`0a` of the mode pages is the mode index. See `docs/09` §7c.1.
+
 A macro **written by this app** plays too: `F13`/2.5 s/`F14`/2.5 s/`F15` came
 out on the listener with 2.55 s and 2.56 s between events. The cycle closes
 end to end — record, encode, write to the three banks, name, assign, play.

@@ -614,6 +614,7 @@ mode: those simply do not exist.</p>
 </div>
 <div class="orphans" id="orphans"></div>
 
+
 <!-- ===================== MATRIX ===================== -->
 <h2 id="matrix">The physical matrix</h2>
 <div class="col">
@@ -1101,6 +1102,39 @@ content. With two, the same. With all three, it stores.</p>
 the write</b>. The <code>0x0D</code> frame the official app wraps around its
 writes is <b>not</b> part of it — with it and without it the result is the
 same at both ends of the matrix.</p>
+
+<h3>Page <code>0x09</code>: sixteen subpages, fourteen that keep <span class="conf c-c">C</span></h3>
+<p>Measured on 2026-10-17 with the <code>0x8A</code> reader. There are sixteen
+subpages (<code>0x00</code>–<code>0x0F</code>) and <b>the whole sequence is
+what commits</b>: writing five of them leaves the database zeroed. The same
+shape as <code>0x05</code>, where the third bank closes the write.</p>
+<div class="tscroll">
+<table>
+<thead><tr><th>Subpage</th><th>Behaviour</th></tr></thead>
+<tbody>
+<tr><td class="m">0x00</td><td>the write is discarded; the read mirrors <code>0x02</code></td></tr>
+<tr><td class="m">0x01</td><td>the write is discarded; it always reads <code>0xFF</code></td></tr>
+<tr><td class="m">0x02–0x0F</td><td>they keep — fourteen names</td></tr>
+</tbody>
+</table>
+</div>
+<p>Writing <code>S00</code>…<code>S15</code> into all sixteen, the ones from
+<code>0x02</code> up came back with their own mark. Writing a mark
+<b>only</b> into <code>0x00</code> and <code>0x01</code>, nothing persisted
+anywhere — it is the writes that are discarded, not the read that
+misleads.</p>
+<p><b>The macro's name was never stored, not even for G.SKILL.</b> The official
+app writes the name into <code>0x00</code> precisely, the discarded one, and this
+page was <b>empty</b> when the project first read it, after
+all the Windows captures. The name lives on the PC, not in the keyboard — and that is
+why the macro plays with no name at all.</p>
+
+<h3>Subpage <code>0a</code> of the mode pages: byte 0 is the mode <span class="conf c-c">C</span></h3>
+<p>Reading all three: <code>0x1b</code> returns <code>00 00 01 1f</code>,
+<code>0x1c</code> returns <code>01 00 01 1f</code> and <code>0x1d</code>
+returns <code>02 00 01 1f</code>. The payload's first byte is the mode's index,
+zero-based. The capture only showed <code>0x1b</code>, where it is
+<code>00</code> and indistinguishable from padding.</p>
 
 <h3><code>0xB4</code> only plays on a G key <span class="conf c-c">C</span></h3>
 <p>Measured on 2026-10-17, with the keyboard playing the macro and an X11

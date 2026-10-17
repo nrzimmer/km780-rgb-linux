@@ -33,8 +33,13 @@ pub const MACRO_GET: u8 = 0x85;
 /// Page-indexed database (`docs/09` §7c). The page goes in `buf[2]` -- where
 /// the other commands put the mode -- and the subpage in `buf[3]`.
 pub const BASE_SET: u8 = 0x0A;
+pub const BASE_GET: u8 = 0x8A;
 /// Database page where the macro and text names live.
 pub const PAGE_MACRO_NAMES: u8 = 0x09;
+/// Page of profile and mode names.
+pub const PAGE_NAMES: u8 = 0x00;
+/// One page per mode: 1 -> 0x1b, 2 -> 0x1c, 3 -> 0x1d (`docs/09` §7c).
+pub const PAGE_MODE: [u8; 3] = [0x1B, 0x1C, 0x1D];
 pub const MACRO_SET: u8 = 0x05;
 
 /// Macro banks of a mode. The official app sends all three in sequence
@@ -279,17 +284,78 @@ impl Keyboard {
         self.write_macro_name(index, if name.is_empty() { "Macro" } else { name })
     }
 
+    /// Reads a subpage of the database: `0x8A`, page in `buf[2]`, subpage in
+    /// `buf[3]`.
+    ///
+    /// Returns the payload from byte 8 on. A pure read, from the same address
+    /// the init already reads (`docs/20`).
+    ///
+    /// It exists because this app started **writing** to that database -- the
+    /// macro name -- and writing where you do not read is how the project lost
+    /// the name that was on page `0x09` before (`docs/30`). Read before write
+    /// holds for any indexed database, not only for the mode payload.
+    pub fn read_base(&self, page: u8, sub: u8) -> Res<Vec<u8>> {
+        let d = self.read(&Self::build(BASE_GET, page, sub, 0, 0, None), WAIT_READ)?;
+        Ok(d[HDR..].to_vec())
+    }
+
+    /// Writes a raw subpage of the database. The lower level: the caller is
+    /// responsible for the whole sequence, which is what commits.
+    pub fn write_base(&self, page: u8, sub: u8, payload: &[u8]) -> Res<()> {
+        self.write(
+            &Self::build(BASE_SET, page, sub, 0, 0, Some(payload)),
+            WAIT_SIMPLE,
+        )
+    }
+
+    /// How many subpages a database page has.
+    ///
+    /// `0x00` to `0x0F`, measured in the capture: the official app writes all
+    /// sixteen in sequence and only then moves to the next page.
+    pub const SUBPAGES: u8 = 0x10;
+
+    /// First subpage of page `0x09` that actually **keeps** what is written.
+    ///
+    /// Measured: writing `S00`..`S15` into all sixteen, the ones from `0x02`
+    /// up came back with their own mark, `0x00` came back with `0x02`'s mark
+    /// and `0x01` came back `0xFF`. Writing a mark **only** into `0x00` and
+    /// `0x01`, nothing persisted anywhere -- so those two are discarded on
+    /// write, and it is not the read that lies.
+    ///
+    /// A consequence that closes an old doubt: the official app writes the
+    /// macro name into `0x00` precisely (`docs/16` §2), and this page was
+    /// **empty** when this project first read it. The name the capture shows on
+    /// the wire was never stored in the keyboard -- not even for G.SKILL. Which
+    /// explains, with no mystery, why the macro plays with no name at all.
+    pub const FIRST_NAME_SUB: u8 = 0x02;
+    /// How many names fit: from `0x02` to `0x0F`.
+    pub const NAME_SLOTS: u8 = Self::SUBPAGES - Self::FIRST_NAME_SUB;
+
     /// Writes a macro's name into database `0x0A` page `0x09`.
     ///
-    /// Mirrors what the official app does right after the three `0x05`
-    /// (`docs/16` §2): the subpage is the macro's index, the payload is the
-    /// name in ASCII, and the following subpages go out zeroed.
+    /// **Read-change-write, and all sixteen subpages.** Both were measured, and
+    /// each for a different reason.
     ///
-    /// It exists because `0xB4` on a key, with a macro stored in bank 1 of the
-    /// active mode, **ran nothing** -- measured. The name is the only thing
-    /// the official app writes alongside that we were not writing.
+    /// All sixteen because an incomplete sequence **does not commit**: writing
+    /// only the name's subpage, or five of them, leaves the database zeroed --
+    /// the name vanished and `0x8A` returned zero. It is the same shape as
+    /// `0x05`, where the third bank closes the write.
+    ///
+    /// Reading first because the other fifteen are other macros' names.
+    /// Building the page from scratch would erase them all, and erasing what
+    /// you do not understand is exactly the mistake that cost the name that was
+    /// here before (`docs/30`).
     pub fn write_macro_name(&self, index: u8, name: &str) -> Res<()> {
-        let mut payload = vec![0u8; PKT - HDR];
+        if index >= Self::NAME_SLOTS {
+            return Err(format!("macro index {index} is outside 0..{}", Self::NAME_SLOTS - 1));
+        }
+        // The index becomes a subpage by adding the start of the area that
+        // keeps. That the name's index is the same index as `0x05`'s is **our
+        // convention**, not a measurement: the only pair the capture shows
+        // falls in the discarded subpage. Nothing else reads this field, so
+        // getting the correspondence wrong breaks nothing -- but inventing it
+        // without saying so would.
+        let sub_of = |i: u8| Self::FIRST_NAME_SUB + i;
         let ascii: Vec<u8> = name
             .bytes()
             .filter(|b| b.is_ascii_graphic() || *b == b' ')
@@ -298,16 +364,24 @@ impl Keyboard {
         if ascii.is_empty() {
             return Err(format!("macro name {name:?} has no ASCII character to write"));
         }
-        payload[..ascii.len()].copy_from_slice(&ascii);
-        self.write(
-            &Self::build(BASE_SET, PAGE_MACRO_NAMES, index, 0, 0, Some(&payload)),
-            WAIT_SIMPLE,
-        )?;
-        // The following subpages zeroed, as in the capture.
-        let empty = vec![0u8; PKT - HDR];
-        for sub in 1..=4u8 {
+
+        let mut pages: Vec<Vec<u8>> = Vec::with_capacity(Self::SUBPAGES as usize);
+        for sub in 0..Self::SUBPAGES {
+            // A virgin subpage comes back as 0xFF; handing it back as such
+            // would store 0xFF as if it were a name. Zero is this database's empty.
+            let mut d = self.read_base(PAGE_MACRO_NAMES, sub)?;
+            if d.iter().all(|&b| b == 0xFF) {
+                d = vec![0u8; PKT - HDR];
+            }
+            pages.push(d);
+        }
+        let slot = &mut pages[sub_of(index) as usize];
+        slot.iter_mut().for_each(|b| *b = 0);
+        slot[..ascii.len()].copy_from_slice(&ascii);
+
+        for (sub, data) in pages.iter().enumerate() {
             self.write(
-                &Self::build(BASE_SET, PAGE_MACRO_NAMES, sub, 0, 0, Some(&empty)),
+                &Self::build(BASE_SET, PAGE_MACRO_NAMES, sub as u8, 0, 0, Some(data)),
                 WAIT_SIMPLE,
             )?;
         }

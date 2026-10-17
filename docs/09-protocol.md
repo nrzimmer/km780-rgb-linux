@@ -5,7 +5,7 @@
 >
 > Confidence convention for each field:
 > **[C]** confirmed in the binary or on hardware · **[I]** inferred, not
-> **[?]** unknown
+> verified · **[?]** unknown
 
 ## Current scope
 
@@ -16,7 +16,7 @@ hardware: color in `0x09` (section 6), intensity in byte 11 of `0x02`
 
 **Phase 2 (now):** work out which messages are left and what each one does —
 sections 4, 7, and the commands still without semantics (`0x05`, `0x07`,
-`0x0D`, `0x12`, `0x16`).
+`0x0A`, `0x0D`, `0x12`, `0x16`).
 
 The lighting is **per key** [C]: 144 slots of 1 byte per channel, 132 of them
 used, one packet per channel.
@@ -27,7 +27,7 @@ used, one packet per channel.
 
 USB device `28da:1101`, three HID interfaces:
 
-| Interface | Protocol | Endpoint | Report desc. | Papel |
+| Interface | Protocol | Endpoint | Report desc. | Role |
 |---|---|---|---|---|
 | 0 | 1 (Keyboard) | `0x81` IN | 65 B | HID keyboard — do not touch |
 | 1 | 2 (Mouse) | `0x82` IN | 252 B | command output (Feature report ID 7) |
@@ -38,7 +38,7 @@ descriptor chain inside the firmware (`0x0000a432`).
 
 ### 1.0 Device descriptor  [C]
 
-Do firmware FW 77, em `0x0000a432`:
+From firmware FW 77, at `0x0000a432`:
 
     12 01 0002 00 00 00 40 DA28 0111 0077 01 02 00 01
 
@@ -72,7 +72,7 @@ Control transfer OUT (`HidDevice_SetFeature`):
 | `wIndex` | `0x0001` | interface 1 |
 | `wLength` | `0x0108` | 264 bytes |
 
-### 1.2 Read  [C]
+### 1.2 Reading  [C]
 
 Control transfer IN (`HidDevice_GetFeature`): `bmRequestType` `0xA1`,
 `bRequest` `0x01` (GET_REPORT), same `wValue`/`wIndex`, 264 bytes.
@@ -138,14 +138,15 @@ Confirmed by the **HID report descriptor inside the firmware itself**
     96 07 01   Report Count = 0x0107 = 263
     b1 02      FEATURE (Data, Variable, Absolute)
 
-Portanto:
+Therefore:
 
     263 data bytes + 1 Report ID byte = 264 = 0x108    -> matches wLength
     8 header bytes + 256 payload bytes = 264           -> matches the offsets
 
-**The `0x07` byte at offset 0 is not a "vendor magic character"**, as
-the abandoned repo claims (`KM_START_CHAR`). It is the **HID Report ID**, the same 7
-that makes up `wValue = 0x0307` (`0x03` = report type FEATURE, `0x07` = report ID).
+**The `0x07` byte at offset 0 is not a "manufacturer magic character"**, as the
+abandoned repo claims (`KM_START_CHAR`). It is the **HID Report ID**, the same
+7 that makes up `wValue = 0x0307` (`0x03` = report type FEATURE, `0x07` = report
+ID).
 
 The 256-byte block is not arbitrary: it is what is left of 264 after an 8-byte
 header. That explains `FUN_100db460`'s `memset(buf, 0, 0x300)` — 768 = exactly
@@ -161,14 +162,14 @@ Taken from `FUN_100d8fc0` (`Setting.dll` RGB v2.04) — the minimal template:
     h = get_handle();
     HidDevice_SetFeature(h, buf, 0x108, 0);      // sends  (ordinal 7)
     Sleep(10);
-    r = HidDevice_GetFeature(h, buf, 0x108, 0);  // le    (ordinal 8)
+    r = HidDevice_GetFeature(h, buf, 0x108, 0);  // reads  (ordinal 8)
     Sleep(10);
 
 **The official software does NOT read the ACK on the interrupt endpoint
 `0x83`.** It does a SetFeature, sleeps, and does a GetFeature into the **same
 buffer**. The abandoned repo's approach (waiting for an 8-byte ACK on EP3)
 works, but it is not what the manufacturer does — and its ACK wait has an
-
+infinite loop if the ACK never arrives.
 Ordinals confirmed by cross-checking `HidDevice.dll`'s export table:
 `Ordinal_7` = `HidDevice_SetFeature`, `Ordinal_8` = `HidDevice_GetFeature`.
 
@@ -245,7 +246,7 @@ unobserved `0x8x` values (reads are safe).
 
 Selects (`0x01`) or reads (`0x81`) the **active mode** (M1/M2/M3 in the UI).
 The UI's "profile" is a PC-side concept and does not exist in the protocol —
-ver `16-capture-05-macros.md` §0.
+see `16-capture-05-macros.md` §0.
 
     07 01 02 00 00 00 00 00  00 ... (rest zeroed)
           ^^ mode number, 1-based
@@ -277,7 +278,7 @@ profile with `0x82` and rewrites it unchanged with `0x02` at boot.
 | 2 | 1 | **mode number, 1-based** (1, 2, 3) | [C] |
 | 3 | 1 | `0x03` in the answer, `0x00` on the write — a status flag | [C] |
 | 4–7 | 4 | zero | [C] |
-| **8** | 1 | **polling rate: bInterval em ms** (1, 2, 4, 8 = 1000/500/250/125 Hz) | **[C]** |
+| **8** | 1 | **polling rate: bInterval in ms** (1, 2, 4, 8 = 1000/500/250/125 Hz) | **[C]** |
 | 9 | 1 | `00` in everything seen | [?] |
 | **10** | 1 | **active effect ID** (0 = static; see section 7.1) | **[C]** |
 | **11** | **1** | **intensity / brightness, 0–4** | **[C]** |
@@ -298,11 +299,12 @@ One byte per slot, in the same order `dump_keymap.py` extracted from
 `Setting.dll`, with `00` in the first 6 (G keys) and `00` in the last 12 (unused
 slots). That confirms the slot map on hardware.
 
-But the value is **not fixed**: it is the **HID usage of the function assigned to the key**.
-Assigning Ctrl to G6 changed byte 125 (slot 5) from `00` to `e0` (LeftCtrl);
-assigning a macro to G1 changed byte 120 (slot 0) to `b4`, which looks like
-the code for "run macro". From the factory each entry matches the HID usage
-of the key itself because nothing was remapped. See `16-capture-05-macros.md` §3.
+But the value is **not fixed**: it is the **HID usage of the function assigned
+to the key**. Assigning Ctrl to G6 changed byte 125 (slot 5) from `00` to `e0`
+(LeftCtrl); assigning a macro to G1 changed byte 120 (slot 0) to `b4`, which
+appears to be the "run macro" code. From the factory each entry coincides with
+the key's own HID usage because nothing had been remapped. See
+`16-capture-05-macros.md` §3.
 
 ### 5.2 The byte is a function code  [C]
 
@@ -325,7 +327,7 @@ high ranges do not collide with the HID usages the keyboard uses (`0x04`–`0x65
 
 A cross-check: the Multimedia codes (`a5`–`a9`) are exactly the ones the factory
 table already carries in the slots of the physical media keys (105–107, 115,
-(105–107, 115, 116) em `10-key-map.md`. **Identificados um a um**
+116) in `10-key-map.md`. **Identified one by one**
 (`26-special-keys.md`):
 
     a5 = Stop   a6 = Prev   a7 = Play/Pause   a8 = Next   a9 = Mute
@@ -344,11 +346,10 @@ Assigning each one to byte 164 (slot 44, the Timer key) with the app in `app/`:
     0xAB  ->  the key turns the volume up
     0xAA  ->  the key turns the volume down
 
-These are the first direct confirmations of codes in this range that **do not come from
-the factory table**: `a5`–`a9` were already confirmed because the physical
-media keys carry them out of the box, but `aa`/`ab` appear on no key
-at all and had never shown up in a capture. The deduction was right at both
-ends.
+These are the first direct confirmations of codes in this range that **do not
+come from the factory table**: `a5`–`a9` were already confirmed because the
+physical media keys carry them from the start, but `aa`/`ab` appear on no key at
+all and had never shown up in a capture. The deduction was right at both ends.
 
 This also shows that the function byte is **not restricted to what the key is**:
 a code that from the factory exists only on the **wheel** — a control with no
@@ -362,7 +363,7 @@ appeared on the wire — see `docs/17` §7.
 
 `0x82` returns **byte for byte** what `0x02` wrote: across the 264 bytes the
 only field that differs is byte 3 (`0x00` on the write, `0x03` in the answer).
-Confirmado em `20-capture-09-dump-read.md` §1.
+Confirmed in `20-capture-09-dump-read.md` §1.
 
 Hence the safe operating model for the Linux tooling:
 
@@ -382,7 +383,7 @@ site is at `0x100d6c12`).
 
 ### 6.1 Packet format
 
-| Offset | Tam | Field | Value |
+| Offset | Size | Field | Value |
 |---|---|---|---|
 | 0 | 1 | Report ID | `0x07` |
 | 1 | 1 | command | `0x09` |
@@ -395,18 +396,16 @@ site is at `0x100d6c12`).
 
 ### 6.2 One packet per channel, not per page  [C]
 
-This was the most important open question, and the answer is not paging of
-keys:
+This was the most important open question, and the answer is not key paging:
+    buf[3] == 1  ->  the firmware reads the 1st byte of each color triple
+    buf[3] == 2  ->  the 2nd byte
+    buf[3] == 3  ->  the 3rd byte
 
 **A complete update is 3 packets**, one per channel. Each packet carries 144
-    buf[3] == 2  ->  o 2o byte
-    buf[3] == 3  ->  o 3o byte
+bytes = **one byte per LED slot**, which is that channel's intensity on that
+LED. That explains why 144 fits comfortably: `8 + 144 = 152` out of 264.
 
-**A complete update is 3 packets**, one per channel. Each packet carries
-144 bytes = **one byte per LED slot**, which is that channel's intensity
-on that LED. That explains why 144 fits comfortably: `8 + 144 = 152` of 264.
-
-**Determined by a hardware test** (2026-10-16), on the user's keyboard:
+### Channel correspondence  [C]
 
 **Determined by a hardware test** (2026-10-16), on the user's keyboard:
 
@@ -417,39 +416,39 @@ on that LED. That explains why 144 fits comfortably: `8 + 144 = 152` of 264.
 | `3` | **B** (blue) |
 
 Plain RGB order. The test lit F5 (slot 45) on channel 1 only, F6 (slot 54) on
-channel 2 only and F7 (slot 59) on channel 3 only, with `0xFF`, and the visual result was
-F5 red, F6 green, F7 blue. Reproduce with `tools/km780_led.py test`.
+channel 2 only and F7 (slot 59) on channel 3 only, with `0xFF`, and the visual
+result was F5 red, F6 green, F7 blue. Reproduce with `tools/km780_led.py test`.
 
-There was no way to find this out from the binary: the firmware treats the three channels
-symmetrically (`FUN_000081b8` only clamps to 1..3 and copies 144 bytes per
-channel), and each one is read from a distinct 4 KB bank in the external SPI flash
-(`0x1070`, `0x2070`, `0x3070`) — see `11-firmware.md`. The mapping is
-a convention of the LED hardware.
+This could not be found out from the binary: the firmware treats the three
+channels symmetrically (`FUN_000081b8` only clamps to 1..3 and copies 144 bytes
+per channel), and each one is read from a distinct 4 KB bank in the external SPI
+flash (`0x1070`, `0x2070`, `0x3070`) — see `11-firmware.md`. The correspondence
+is a convention of the LED hardware.
 
-### The `0x09` is authoritative for static color  [C]
+### `0x09` is authoritative for static color  [C]
 
-In the same test, **every other key went dark**, because the remaining slots
-were sent as zero. There is no effect layer nor brightness layer on top of
-what the `0x09` writes — if there were, the other keys would have stayed lit.
+In the same test, **every other key went dark**, because the other slots were
+sent as zero. There is no effect or brightness layer sitting on top of what
+`0x09` writes — if there were, the other keys would have stayed lit.
 
 ### 6.3 Write and read are symmetric  [C]
 
 Verified on hardware: after writing with `0x09`, reading with `0x89` on the same
-channel returns exactly the bytes sent. The device **echoes the header**
-in the reply:
+channel returns exactly the bytes sent. The device **echoes the header** in its
+answer:
+
+    sent:      07 09 01 02 ...        (profile 1, channel 2)
+    returned:  07 89 01 02 ...        (command with bit 7, same profile and channel)
 
 That confirmed on hardware two things that had been inferences: `buf[2]` is the
 1-based profile index, and `buf[3]` is the channel.
 
-That confirmed on hardware two things that used to be inference: `buf[2]` is the
-1-based profile index, and `buf[3]` is the channel.
+### 6.4 There is no commit command  [C]
 
 The third packet closes the update. The observed timing:
 
-The third packet closes the update. The timing observed:
-
     for channel in (1, 2, 3):
-        build packet
+        build the packet
         SetFeature(buf, 0x108)
         Sleep(20 ms)
         if channel == 3:
@@ -462,9 +461,9 @@ apply command.
 
 **Extracted.** Table at `0x1023b3b0` in `.data`, 132 slots, every key
 identified. It has its own document: **`10-key-map.md`**.
-Regenerar com `tools/dump_keymap.py`.
+Regenerate with `tools/dump_keymap.py`.
 
-Formato: linhas de 8 bytes, `dword0` = virtual-key code do Windows (ou ID
+Format: 8-byte rows, `dword0` = Windows virtual-key code (or a synthetic ID
 ≥ `0x800` for the G keys and zones), `dword1` = USB HID usage code.
 **The row's position is the slot index.** The order is not the keyboard's
 physical one — it is the hardware's LED scan order.
@@ -485,7 +484,7 @@ brightness event) **was not confirmed**. Nor was its correction: `0x0B` is not
 the brightness event either — it only appears as a host→keyboard write, with
 Ripple's and Sonic's per-key data. The brightness event is
 **`02 04 <mode> 09 <level>`** on EP `0x83`, with the level in the same 0–4 range
-Ver `22-gaps-solved.md` §0.3 e §2.2.  **[C]**
+as byte 11. See `22-gaps-solved.md` §0.3 and §2.2.  **[C]**
 
 ### 6.7 Still open
 
@@ -500,7 +499,7 @@ Ver `22-gaps-solved.md` §0.3 e §2.2.  **[C]**
   nobody painted a color into it, and the set of dark slots changes with the
   mode  **[?]**
 - does `0x89` (read) return the matrix in the same format — **yes**, confirmed
-  em `20-capture-09-dump-read.md` §3  **[C]**
+  in `20-capture-09-dump-read.md` §3  **[C]**
 
 ## PHASE 2 — what is left
 
@@ -523,12 +522,13 @@ Full detail in `15-capture-04-effects.md`.
 | `0x09` | Cycle | `0x0E` (zeroed) |
 | `0x0A` | Rain | `0x0F` (`03 03 fc`) + `0x12` ×3 channels |
 
-Only `0x05` and `0x06` are missing: the UI offers exactly 8 effects, all mapped.  [?]
+Only `0x05` and `0x06` are missing: the UI offers exactly 8 effects, all
+mapped.  [?]
 
 > **Corrected in `22-gaps-solved.md` §0.1.** These commands do **not** follow
 > `0x09`'s `buf[3] = channel` convention: the channel is in **`buf[4]`** and
 > `buf[3]` is another parameter. `0x0B` also uses `buf[5]` to tell Ripple from
-> Ripple de Sonic.
+> Sonic.
 
 The "×3 channels" commands use `buf[4] = 1, 2, 3` — the same R/G/B triple as
 `0x09`, in a different field. They came with a zeroed payload in the capture,
@@ -545,7 +545,7 @@ same layout as `0x09`, solved by decompilation in `22-gaps-solved.md` §1.  **[C
   store **2×** the UI's value, the rest 1×  [C]
 - **each effect keeps its own duration**: switching effect and coming back
   restores the previous value, and the mode payload carries only the active
-  (`21-capture-10-limits.md` §4)  **[C]**
+  effect's (`21-capture-10-limits.md` §4)  **[C]**
 
 ### 7.3 `0x08` — the rasterized gradient  [C]
 
@@ -571,14 +571,14 @@ Detail and validation in `21-capture-10-limits.md` §3.
 
     00 <duration> <direction> <N>   followed by N stops of 5 bytes
 
-| Campo | Significado |
+| Field | Meaning |
 |---|---|
 | byte 1 | duration, in seconds (the UI's value directly) |
 | byte 2 | direction: `0`=Up, `1`=Down, `2`=Left, `3`=Right |
 | byte 3 | **number of color stops** |
 | 5 bytes per stop | `R G B <intensity> <position>`, both 0–100 |
 
-Exemplo real com 4 paradas:
+A real example with 4 stops:
 
     00 03 03 04 | ff 00 00 64 00 | ff ff ff 64 17 | 00 ff 00 16 2f | 00 00 ff 64 64
                    red              white            green            blue
@@ -587,7 +587,7 @@ Exemplo real com 4 paradas:
 Validated by working the Color Controller: changing a stop's color changed only
 its RGB; dragging horizontally changed only the position; dragging vertically
 changed only the intensity; and adding a fourth stop incremented byte 3.
-Ver `19-capture-08-closing.md` §1.
+See `19-capture-08-closing.md` §1.
 
 The stop count also appears in the mode payload, at bytes 75–77.
 
@@ -604,11 +604,12 @@ Only bank 1 carried data in the capture.
     byte 10+   3-byte records: [flag] [delay] [HID usage]
 
 - **flag** — bit 7: `1` = press, `0` = release. The **low nibble** carries the
-  bits altos do delay.
+  delay's high bits.
 - **delay** — `((flag & 0x0F) << 8) | delay_byte`, in units of **10 ms**.
-  A single byte saturates at 2.55 s; with the extension the ceiling goes to ~41 s.
-- **HID usage** — the key. **Modifiers are ordinary keys** (`0xE0` =
-  LeftCtrl), there is no modifier field.
+  A single byte saturates at 2.55 s; with the extension the ceiling goes to
+  ~41 s.
+- **HID usage** — the key. **Modifiers are ordinary keys** (`0xE0` = LeftCtrl),
+  there is no modifier field.
 
 Validated against an `A B C` macro (`docs/16` §1) and against a macro with an
 8.65 s pause and another with Ctrl+C (`docs/21` §1 and §2): in all of them,
@@ -616,54 +617,57 @@ events and delays match one for one what the app shows on screen.
 
 The official UI **does not allow mouse events inside a macro**, only keys.
 A mouse function is a **type of key assignment**, a separate path: see 5.2.
-ver 5.2.
+The macro's **name** goes by another path: `0x0A` page `0x09`, in ASCII.
 
 ### All three banks are mandatory  [C]
 
-### All three banks are mandatory  [C]
-
-Measured on hardware on 2026-10-17, writing through the app in `app/`. Writing bank 1
-alone **does not store**: the keyboard replies ACK and the re-read returns the
-previous content. With two banks, the same. With all three, it stores.
+Measured on hardware on 2026-10-17, writing through the app in `app/`. Writing
+only bank 1 **does not store**: the keyboard answers ACK and the re-read returns
+the previous content. With two banks, the same. With all three, it stores.
 
 | Banks sent | Result |
 |---|---|
 | 1 | does not take |
 | 1, 2 | does not take |
-| 1, 2, 3 | **pega** |
+| 1, 2, 3 | **takes** |
 
-Each attempt used a different macro, in mode 3, with the check in a
-separate read — see below why the immediate one does not do.
+Each attempt used a different macro, on mode 3, with the check in a separate
+read — see below for why an immediate one is no good.
 
-It is the same design as the `0x09`: there is no commit command, the **third
-packet closes the write** (§6.4). The `0x0D` frame the official app puts
-around its writes is **not** part of this: with it and without it the result is the
-same at both ends of the matrix.
+It is the same shape as `0x09`: there is no commit command, the **third packet
+closes the write** (§6.4). The `0x0D` frame the official app wraps around its
+writes is **not** part of it: with it and without it the result is the same at
+both ends of the matrix.
 
 ### An immediate re-read returns the old content  [C]
 
-Right after the write, the `0x85` still replies with what was there before. Half
-a second later it replies with the new. Anyone checking a write has to
-wait; without that the check reports a failure that never happened — which is
-exactly what happened here before the matrix above was run.
+Right after the write, `0x85` still answers with what was there before. Half a
+second later it answers with the new one. Whoever checks a write needs to wait;
+without that the check reports a failure that did not happen — which is exactly
+what happened here before the matrix above was run.
 
 ### 7b.2 `0xB4` only plays on a G key  [C]
 
-Measured on 2026-10-17, with the keyboard playing the macro and an X11 listener on the
-other end. The `0xB4` is accepted by the assignment table on **any**
-key, but it only runs on a G key:
+Measured on 2026-10-17, with the keyboard playing the macro and an X11 listener
+on the other side. `0xB4` is accepted by the assignment table on **any** key,
+but it only executes on a G key:
 
-| Key | Who set the `0xB4` | Result |
+| Key | Who put the `0xB4` there | Result |
 |---|---|---|
-| G1 | the official app, in the capture | **runs the macro in bank 1 of the active mode** |
-| G2 | the official app, in the capture | **runs the same macro** |
+| G1 | the official app, during the capture | **runs the macro in bank 1 of the active mode** |
+| G2 | the official app, during the capture | **runs the same macro** |
 | Timer | this app | nothing |
 | LCtrl | this app | nothing, and the key goes **mute** |
 
 The `LCtrl` case is what gives the behaviour its shape: the key **stopped
-emitting Ctrl**, so the firmware accepted the remapping — it just does not play the
-macro. `0xB4` outside a G key is silence, the same as `0x00` (`docs/17`
-§5.1).
+emitting Ctrl**, so the firmware accepted the remap — it simply does not play
+the macro. `0xB4` outside a G key is silence, same as `0x00` (`docs/17` §5.1).
+
+Two consequences. The first is that G.SKILL's UI offering macros only on the G
+keys **is not an interface choice, it is a firmware limit** — and that is the
+first case where the official UI was right about a limit we thought was its own.
+The two earlier cases (the `0x06` effect, the `0xC3`/`0xC4` shortcuts) were the
+opposite: firmware with more in it than the UI showed.
 
 The second is that **the index does not come from the key**: G1 and G2 played
 the *same* macro, the one at index 0. What the old question "which macro does
@@ -671,27 +675,27 @@ the *same* macro, the one at index 0. What the old question "which macro does
 bank 1 of the active mode —, even though the field that would hold a per-key
 index, if it exists, remains unlocated.
 
-The second is that **the index does not come from the key**: G1 and G2 played the *same*
-macro, the one at index 0. What the old question "which macro does the `0xB4` run"
-(`docs/16` §3) wanted to know has a practical answer — the one in bank 1 of the
-active mode —, even though the field that would hold a per-key index, if it exists,
-remains unlocated.
+The test is valid because `Timer` **had already worked** with another code: in
+`docs/09` §5.2 it received `0xAB` and turned the volume up. The key acts; what
+does not act is `0xB4` on it.
 
-A valid test because the `Timer` **had already worked** with another code: in
-`docs/09` §5.2 it received `0xAB` and turned the volume up. The key acts; what does not
-act is the `0xB4` on it.
+### 7b.1 `0x85` — reading the macro  [C]
 
-### 7b.1 `0x85` — ler a macro  [C]
-
-It had never shown up in a capture: the official app was only ever seen **writing**
-a macro. The command is in the confirmed read space (it ends at `0x95`) and
-appears in the init and in the decompilation, so reading it is safe. Measured on
-2026-10-17:
+It had never appeared in a capture: the official app was only ever seen
+**writing** macros. The command is in the confirmed read space (which ends at
+`0x95`) and appears in the init and in the decompilation, so reading it is safe.
+Measured on 2026-10-17:
 
     07 85 <mode> <index> <bank> 00 00 00
 
-The reply carries the same payload as the `0x05`, from byte 8 on. Two things
-came out of it:
+The answer carries the same payload as `0x05`, from byte 8 on. Two things came
+out of it:
+
+**The macros from the Windows captures are still in the keyboard.** Mode 1
+bank 1 returned the `A … B` macro with the 8.65 s pause from `docs/21` §1, and
+mode 2 bank 1 returned the `A B C` from `docs/16` §1 — byte for byte, with the
+delays matching. It is an independent validation of the decoder: it read back,
+from the hardware, what the capture had shown on the wire months earlier.
 
 **A never-written bank answers `0xFF`.** Mode 3, which the official app never
 touched, returned `0xFF` in all three banks — the same convention as `0x8A` in
@@ -699,16 +703,10 @@ the init (`docs/20`). `0xFF` means "there is nothing here" and is **different
 from zeroed**, which is an empty macro. Without telling the two apart, a virgin
 bank decodes as 84 events of `0xFF` with 40.95 s of delay each.
 
-**A bank that was never written replies `0xFF`.** Mode 3, which the official app never
-touched, returned `0xFF` on all three banks — the same convention as the `0x8A` in the init
-(`docs/20`). `0xFF` means "there is nothing here" and is **different from zeroed**, which is
-an empty macro. Without telling the two apart, a virgin bank decodes as 84
-`0xFF` events with 40.95 s of delay each.
-
-An implementation detail worth recording: the reply comes back **one byte
-short** (263 of 264), so the last byte of the payload keeps whatever the
-caller had in the buffer. Testing "all 256 are `0xFF`" is never true;
-the header (`FF FF` against `00 01`) is the test that works.
+An implementation detail worth recording: the answer comes back **one byte
+short** (263 of 264), so the payload's last byte keeps whatever the caller had
+in the buffer. Testing "all 256 are `0xFF`" is never true; the header
+(`FF FF` against `00 01`) is the test that works.
 
 ---
 
@@ -716,11 +714,11 @@ the header (`FF FF` against `00 01`) is the test that works.
 
 | Page (`buf[2]`) | Content |
 |---|---|
-| `0x00` | nomes: `ProfileN`, `Mode1`, `Mode2`, `Mode3` |
+| `0x00` | names: `ProfileN`, `Mode1`, `Mode2`, `Mode3` |
 | `0x09` | the **macro and text** database (names in ASCII) |
-| `0x1b` | base do **mode 1** |
-| `0x1c` | base do **mode 2** |
-| `0x1d` | base do **mode 3** |
+| `0x1b` | database of **mode 1** |
+| `0x1c` | database of **mode 2** |
+| `0x1d` | database of **mode 3** |
 
 The three mode pages have an identical structure:
 
@@ -733,8 +731,9 @@ The three mode pages have an identical structure:
 
 ### (id, value) pairs in subpage `0a`
 
-It always appears in a pair, in the middle of the mode write: `buf[3]=0x09` with a zeroed
-payload, followed by `buf[3]=0x0a` with data. `buf[2]` is the page of the active mode.
+It always appears as a pair, in the middle of a mode write: `buf[3]=0x09` with a
+zeroed payload, followed by `buf[3]=0x0a` with data. `buf[2]` is the active
+mode's page.
 
     07 0a 1b 0a 00 00 00 00  00 00 01 <id> <value> 00 ...
 
@@ -744,18 +743,66 @@ payload, followed by `buf[3]=0x0a` with data. `buf[2]` is the page of the active
 | 3 | subpage — `0x09` (empty) / `0x0a` (data) | [C] |
 | 10 | `0x01` — a pair counter? | [I] |
 | 11 | **parameter id** — `0x1f` at rest, `0x05` for the repeat delay | [C] |
-| 12 | **value** — 0–3 in the repeat delay | [C] |
+| 12 | **value** — 0–3 for the repeat delay | [C] |
+
+### 7c.1 Page `0x09`: sixteen subpages, fourteen that keep  [C]
+
+Measured on 2026-10-17 with the `0x8A` reader in the app in `app/`. Three
+things, and the third undoes an assumption of this project.
+
+**There are sixteen subpages, `0x00`–`0x0F`.** The capture shows the official
+app writing all sixteen in sequence before moving to the next page. And the
+whole sequence is what **commits**: writing only the name's subpage, or five of
+them, leaves the database zeroed — the name vanishes and `0x8A` returns zero.
+The same shape as `0x05`, where the third bank closes the write.
+
+**The first two do not keep.** Writing `S00`…`S15` into all sixteen, the ones
+from `0x02` up came back with their own mark; `0x00` came back with `0x02`'s
+mark, and `0x01` came back `0xFF`. Writing a mark **only** into `0x00` and
+`0x01`, nothing persisted anywhere — so it is the writes that are discarded, not
+the read that lies. `0x00` is a mirror of `0x02`.
+
+| Subpage | Behaviour |
+|---|---|
+| `0x00` | the write is discarded; the read mirrors `0x02` |
+| `0x01` | the write is discarded; it always reads `0xFF` |
+| `0x02`–`0x0F` | they keep — fourteen names |
+
+**The macro's name was never stored, not even for G.SKILL.** The official app
+writes the name into subpage `0x00` precisely (`docs/16` §2) — the discarded
+one. And this page was **empty** when the project first read it, after all the
+Windows captures. The name the capture shows on the wire lives on the PC, not in
+the keyboard.
+
+That closes, with no mystery, why the macro plays with no name at all: the name
+was never part of what the keyboard stores. When `0xB4` would not play on an
+ordinary key, I assumed the name was the missing piece and started writing it;
+the missing piece was something else — the key has to be a G (§7b.2). Writing
+the name stayed in the app anyway, now addressed at `0x02 + index`, because it
+is the only place that persists and because it gives the user a way to see what
+is in the keyboard.
+
+### (id, value) pairs in subpage `0a`: byte 0 is the mode  [C]
+
+Reading the three mode pages, subpage `0a` comes out like this:
+
+    0x1b (mode 1):  00 00 01 1f ...
+    0x1c (mode 2):  01 00 01 1f ...
+    0x1d (mode 3):  02 00 01 1f ...
+
+The payload's first byte is the **mode index, zero-based**. The capture had only
+shown page `0x1b`, where it is `00` and indistinguishable from padding. It
+confirms the page↔mode mapping from the other side.
 
 Detail in `14-capture-03-config.md` §3. In the init the same address
-`1b/09`, `1b/0a` is **read** with `0x8A` (reply pure `0xFF`), which confirms
-that `0x0A`/`0x8A` are the write and the read of the same base indexed by
-`buf[2]`/`buf[3]`.
-
+`1b/09`, `1b/0a` is **read** with `0x8A` (the answer being pure `0xFF`), which
+confirms that `0x0A`/`0x8A` are the write and the read of the same database
+indexed by `buf[2]`/`buf[3]`.
 ---
 
-## 9. Known gaps
+## 8. Initialization sequence  [C]
 
-Settled in `captures/01-open.pcapng` — detail in `docs/12-capture-01-open.md`.
+Solved in `captures/01-open.pcapng` — detail in `docs/12-capture-01-open.md`.
 It is 28 packets in 3.2 s:
 
     07 16 01                     opens the session
@@ -763,23 +810,24 @@ It is 28 packets in 3.2 s:
     07 8a 00 00..03              reads 0x8A page 0 (all 0xFF)
     07 81 00                     reads the active profile  -> 07 81 01
     07 82 01 / 02 / 03           reads the information of the 3 profiles
-    07 8a 1b/1c/1d 00,01,02,09,0a   reads more pages of 0x8A (all 0xFF)
+    07 8a 1b/1c/1d 00,01,02,09,0a   reads more 0x8A pages (all 0xFF)
     07 02 01 <256 bytes>         rewrites profile 1 unchanged
     07 0d 01                     leaves configuration mode
-    07 07 00 15                  command 0x07, until then unknown
+    07 07 00 15                  command 0x07, unknown until then
 
 `0x0D` appears as a begin/end pair (arg `00` before the writes, `01` after).
 `0x16` is always the first message.
 
-> **The `0x16` is what turns on the `f6` key report** on EP `0x83` — tested on
-> hardware, `24-session-0x16.md` §1. That is why no capture shows what turns
-> it on: the keyboard already came with it on from an earlier run of the software.
+> **`0x16` is what turns on the `f6` key reporting** on EP `0x83` — tested on
+> hardware, `24-session-0x16.md` §1. That is why no capture shows who turns it
+> on: the keyboard already came in turned on from an earlier run of the
+> software.
 >
-> **No command closes the session**, and while it is open the keyboard may
-> stop typing. What brings it back is a **USB reset**. Any tool that
-> sends `0x16` has to guarantee the reset on the way out. §2 to §4 of the same document.
+> **No command closes the session**, and while it is open the keyboard may stop
+> typing. What gives it back is a **USB reset**. Any tool that sends `0x16`
+> must guarantee the reset on the way out. §2 to §4 of the same document.
 
-The `07 07 00 15` is **not** what turns the `f6` on — it was the prime suspect and was
+`07 07 00 15` is **not** what turns `f6` on — it was the prime suspect and was
 ruled out in the test. It still has no known function. [?]
 
 ---
@@ -788,55 +836,56 @@ ruled out in the test. It still has no known function. [?]
 
 ### Phase 1 — closed
 
-| # | Item | Status |
+| # | Item | State |
 |---|---|---|
-| 1 | layout of the `0x09` payload | **solved** — section 6.1 |
+| 1 | layout of `0x09`'s payload | **solved** — section 6.1 |
 | 2 | paging | **solved** — it is 1 packet per channel, section 6.2 |
 | 3 | commit/apply command | **solved** — there is none, section 6.3 |
 | 4 | key → slot map | **solved** — `10-key-map.md`, confirmed on hardware |
 | 5 | which channel is R, G, B | **solved** — 1=R, 2=G, 3=B, tested on hardware |
-| 6 | how intensity/brightness is controlled | **solved** — byte 11 of the `0x02`, section 6.6 |
+| 6 | how intensity/brightness is controlled | **solved** — byte 11 of `0x02`, section 6.6 |
 
 ### Phase 2 — what is missing
 
-| # | Item | Status |
+| # | Item | State |
 |---|---|---|
-| 1 | effect catalog | **solved** — the 8 from the UI, with ID and name, section 7.1 |
+| 1 | effect catalog | **solved** — the 8 in the UI, with ID and name, section 7.1 |
 | 2 | macro format (`0x05`) | **solved** — section 7b, write and read measured on hardware |
 | 3 | payload of `0x01` / `0x02` | **solved** — sections 4 and 5 |
-| 4 | `0x0A`/`0x8A` | **solved** — per-page base, section 7c |
+| 4 | `0x0A`/`0x8A` | **solved** — page-indexed database, section 7c |
 | 5 | key assignment table | **solved** — section 5.1 |
-| 6 | payload of the `0x08` | **partial** — the 69 gradient bytes are right, but bytes up to 200 vary too, `22-gaps-solved.md` §3 [?] |
-| 7 | `0x0B`, `0x12`, `0x15` | **solved** — 144 bytes, one per slot, at byte 8, `22-gaps-solved.md` §1 [C] |
-| 7b | `0x0E`, `0x0F` | **solved** — 3 slots of 71 bytes at 8/79/150, each one `[2 hdr][3 channels × 23 steps]`, `22-gaps-solved.md` §4 [C] |
+| 6 | `0x08`'s payload | **partial** — the gradient's 69 bytes are right, but bytes up to 200 also vary, `22-gaps-solved.md` §3 [?] |
+| 7 | `0x0B`, `0x12`, `0x15` | **solved** — 144 bytes per slot at byte 8, `22-gaps-solved.md` §1 [C] |
+| 7b | `0x0E`, `0x0F` | **solved** — 3 slots of 71 bytes at 8/79/150, each one `[2 header][3 channels × 23 steps]`, `22-gaps-solved.md` §4 [C] |
 | 8 | `0x07`, `0x0D`, `0x16` | role known (opening / frame / end of init), payload never varied [I] |
-| 9 | the lighting toggles | **closed.** There are **three**, not two: 107, 108 and 119, and the app has exactly three switches. **119** = volume display **[C]**. **107 and 108 are inert** — written at both values, in the static mode and in the mode with Wave, with a mode switch: no effect. They are stored state, not control. Preserve on the round-trip and do not touch — `23-hardware-validation.md` §9 and §12 |
+| 9 | the lighting toggles | **closed.** There are **three**, not two: 107, 108 and 119, and the app has exactly three keys. **119** = volume display **[C]**. **107 and 108 are inert** — written at both values, in the static mode and in the mode with Wave, with a mode switch: no effect. They are stored state, not control. Preserve them through the round-trip and do not touch them — `23-hardware-validation.md` §9 and §12 |
 | 10 | bytes 72–107 of the config block | partial: 75–77 = number of color stops |
-| 11 | bytes 6–7 of the header | zero across the 6,277 packets captured [C] |
-| 11b | `buf[5]` | **carries Ripple/Sonic in the `0x0B`**; zero everywhere else [C] |
-| 12 | device→host events on EP `0x83` | **three formats mapped**, and the **15×9 matrix surveyed key by key** — `25-physical-matrix.md`, 122 keys, validates 100% of the 1,535 events captured. `02 04 M 09 N` = **brightness**; `02 04 M 08 01` = mode/presence; only `02 04 M 04 …` remains [?] |
+| 11 | bytes 6–7 of the header | zero in the 6,277 captured packets [C] |
+| 11b | `buf[5]` | **carries Ripple/Sonic in `0x0B`**; zero everywhere else [C] |
+| 12 | device→host events on EP `0x83` | **three formats mapped**, and the matrix **15×9 mapped key by key** — `25-physical-matrix.md`, 122 keys, validates 100% of the 1,535 captured events. `02 04 M 09 N` = **brightness**; `02 04 M 08 01` = mode/presence; only `02 04 M 04 …` is still [?] |
 | 13 | effect IDs `0x05` and `0x06` | they do not exist in the UI [?] |
 | 14 | key function codes | **solved** — section 5.2 and `docs/17` |
-| 14b | the content of a **Text** | **does not go to the keyboard**, not even on "Save to Device Memory" — `docs/18` §6 [C] |
-| 14c | Disable vs Default | **solved** — Disable writes `0x00`, Default restores the native HID, `docs/18` §1 |
+| 14b | a **Text**'s content | **does not go to the keyboard**, not even on "Save to Device Memory" — `docs/18` §6 [C] |
+| 14c | Disable vs Default | **solved** — Disable writes `0x00`, Default restores the native HID usage, `docs/18` §1 |
 | 15 | LED Sleep | **parameters known** from the binary's config block — `SleepMode`, `SleepMin` (minutes) and an effect `Kind/Name/ID`. Whether they go to the keyboard is still [?] — `23-hardware-validation.md` §10 |
-| 17 | the macro's Playback Option | a dropdown of 4 options, byte not located — `docs/21` §6 |
-| 15b | Timer Key | it is a **key on the keyboard**, not a setting: it emits `f6 01 04 07` — `docs/19` §5 |
-| 15c | OSD (On Screen Display) | it belongs to the app, drawn on the PC screen; it generates no USB traffic |
-| 16 | Static Base Color | **it is not a separate path** — it is the inverse of "Enable Lighting Effect", `docs/18` §7 |
+| 17 | the macro's Playback Option | a dropdown with 4 options, byte not located — `docs/21` §6 |
+| 15b | Timer Key | it is a **keyboard key**, not a setting: it emits `f6 01 04 07` — `docs/19` §5 |
+| 15c | OSD (On Screen Display) | it belongs to the app, drawn on the PC's screen; it generates no USB traffic |
+| 16 | Static Base Color | **not a separate path** — it is the inverse of "Enable Lighting Effect", `docs/18` §7 |
 
 **Command set observed on the wire** (14 write + 4 read).
-Only these four `0x8x` reply as reads — see the warning in the README about
-not scanning the others:
+Only these four `0x8x` answer as reads — see the README's warning about not
+sweeping the others:
 
     0x01 0x02 0x05 0x07 0x08 0x09 0x0A 0x0B 0x0D 0x0E 0x0F 0x12 0x15 0x16
     0x81 0x82 0x89 0x8A
 
 The list in `3.1` is still a floor: only what the UI exercises shows up.
-## Fontes
 
-- Transport: `legonigel/KM780-RGB-Linux-Driver` (`src/keyboard.cpp`),
-  confirmed against the hardware — see `01-transport.md`
+## Sources
+
+- Transport: `legonigel/KM780-RGB-Linux-Driver` (`src/keyboard.cpp`), confirmed
+  against the hardware — see `01-transport.md`
 - Interfaces and endpoints: `lsusb -v` on the user's machine
 - Official binaries: `06-binaries.md`
 - Addresses in `Setting.dll`: `08-setting-dll.md`
