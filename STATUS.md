@@ -139,6 +139,7 @@ The declared goal is met. Two directions, neither blocking the other:
     26   the 18 special keys, slot by slot
     27   0x0E/0x0F via the builder, effect catalog, effect 6
     28   remapping a key in the keyboard's memory, with no service
-    29   the Rust app: decisions and starting point  <-- start here
+    29   the Rust app: decisions and starting point
+    30   the app's v1 live, and the three corrections to doc 29  <-- start here
     12-21  one analysis per capture
     01-08, 11  the trail of how we got here
