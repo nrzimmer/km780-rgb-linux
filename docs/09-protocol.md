@@ -92,7 +92,12 @@ Output (Usage `0x31`), with no Report ID. It is EP `0x83`'s 8-byte channel.
 | 0 | 1 | `0x00` — status? always zero on success | [I] |
 | 1 | 1 | `0x00` — status? always zero on success | [I] |
 | 2 | 1 | echo of the command byte | [C] |
-| 3–7 | 5 | **unknown** | [?] |
+| 3 | 1 | zero in the 6,185 captured ACKs | [C] |
+| **4** | 1 | **mode** (1–3) in the ACKs of `0x01`/`0x81`; zero in the rest | **[C]** |
+| 5–7 | 3 | zero in the 6,185 captured ACKs | [C] |
+
+`0x81` returns the active mode **through here**, in byte 4 of the 8-byte event,
+and not through the control IN. See `22-gaps-solved.md` §2.1.
 
 ---
 
@@ -438,8 +443,11 @@ alongside keep their color values intact (`0xFF` on channel R), that is, **the
 firmware applies the brightness; the host does not pre-multiply the color**.
 
 `11-firmware.md`'s hypothesis (command `0x0B` as the counterpart of the
-brightness) **did not hold**: the official app never sends `0x0B`. The `0x0B` remains
-the device→host event for a brightness change from the keyboard's own keys.
+brightness event) **was not confirmed**. Nor was its correction: `0x0B` is not
+the brightness event either — it only appears as a host→keyboard write, with
+Ripple's and Sonic's per-key data. The brightness event is
+**`02 04 <mode> 09 <level>`** on EP `0x83`, with the level in the same 0–4 range
+Ver `22-gaps-solved.md` §0.3 e §2.2.  **[C]**
 
 ### 6.7 Still open
 
@@ -462,8 +470,8 @@ Full detail in `15-capture-04-effects.md`.
 |---|---|---|
 | `0x00` | **none** (effects off) | — |
 | `0x01` | Wave | — |
-| `0x02` | Ripple | `0x0B` ×3 channels, `buf[4]=0x00` |
-| `0x03` | Sonic | `0x0B` ×3 channels, `buf[4]=0x01` |
+| `0x02` | Ripple | `0x0B` ×3 channels, `buf[4]`=channel, `buf[5]=0x00` |
+| `0x03` | Sonic | `0x0B` ×3 channels, `buf[4]`=channel, `buf[5]=0x01` |
 | `0x04` | Breathing | — |
 | `0x07` | Changeling | `0x0E` (`04 03 fc`) + `0x15` ×3 channels |
 | `0x08` | **Checkpoint** — uses "Transition Point" (number of keys) instead of duration/direction | — |
@@ -472,9 +480,15 @@ Full detail in `15-capture-04-effects.md`.
 
 Only `0x05` and `0x06` are missing: the UI offers exactly 8 effects, all mapped.  [?]
 
-The "×3 channels" commands use `buf[3] = 1, 2, 3` — the same R/G/B convention as the
-`0x09`. They came with a zeroed payload in the capture, so they are a per-key mask
-or color that has not been exercised yet.  [I]
+> **Corrected in `22-gaps-solved.md` §0.1.** These commands do **not** follow
+> `0x09`'s `buf[3] = channel` convention: the channel is in **`buf[4]`** and
+> `buf[3]` is another parameter. `0x0B` also uses `buf[5]` to tell Ripple from
+> Ripple de Sonic.
+
+The "×3 channels" commands use `buf[4] = 1, 2, 3` — the same R/G/B triple as
+`0x09`, in a different field. They came with a zeroed payload in the capture,
+but **the payload is an array of 144 bytes, one per LED slot, at byte 8** — the
+same layout as `0x09`, solved by decompilation in `22-gaps-solved.md` §1.  **[C]**
 
 ### 7.2 Duration and direction, in the mode's config block
 
@@ -646,13 +660,15 @@ It is 28 packets in 3.2 s:
 | 3 | payload of `0x01` / `0x02` | **solved** — sections 4 and 5 |
 | 4 | `0x0A`/`0x8A` | **solved** — per-page base, section 7c |
 | 5 | key assignment table | **solved** — section 5.1 |
-| 6 | payload of the `0x08` | **solved** — rasterized gradient, 3 channels × 23 steps, section 7.3 |
-| 7 | `0x0B`, `0x0E`, `0x0F`, `0x12`, `0x15` | identified as per-effect data; **per-key payload never exercised** — the effect is global in the UI [I] |
+| 6 | payload of the `0x08` | **partial** — the 69 gradient bytes are right, but bytes up to 200 vary too, `22-gaps-solved.md` §3 [?] |
+| 7 | `0x0B`, `0x12`, `0x15` | **solved** — 144 bytes, one per slot, at byte 8, `22-gaps-solved.md` §1 [C] |
+| 7b | `0x0E`, `0x0F` | shape observed, the layout does not close — `22-gaps-solved.md` §4 [I] |
 | 8 | `0x07`, `0x0D`, `0x16` | role known (opening / frame / end of init), payload never varied [I] |
 | 9 | byte 108 vs byte 119 | they are **two distinct toggles**; likely assignment 119=volume display, 108=all lighting [I] — `docs/19` §4 |
 | 10 | bytes 72–107 of the config block | partial: 75–77 = number of color stops |
-| 11 | `buf[5]` and bytes 6–7 of the header | they came out zero in everything captured [?] |
-| 12 | device→host events on EP `0x83` | **`f6 01 XX YY` solved** = (column, row) of the physical matrix, `docs/18` §3; `02 04 01 08 01` still [?] |
+| 11 | bytes 6–7 of the header | zero across the 6,277 packets captured [C] |
+| 11b | `buf[5]` | **carries Ripple/Sonic in the `0x0B`**; zero everywhere else [C] |
+| 12 | device→host events on EP `0x83` | **three formats mapped** — `22-gaps-solved.md` §2. `f6 01 XX YY` = (column, row), 13×9 matrix; `02 04 M 09 N` = **brightness**; `02 04 M 08 01` = mode/presence; only `02 04 M 04 …` remains [?] |
 | 13 | effect IDs `0x05` and `0x06` | they do not exist in the UI [?] |
 | 14 | key function codes | **solved** — section 5.2 and `docs/17` |
 | 14b | the content of a **Text** | **does not go to the keyboard**, not even on "Save to Device Memory" — `docs/18` §6 [C] |
@@ -663,7 +679,9 @@ It is 28 packets in 3.2 s:
 | 15c | OSD (On Screen Display) | it belongs to the app, drawn on the PC screen; it generates no USB traffic |
 | 16 | Static Base Color | **it is not a separate path** — it is the inverse of "Enable Lighting Effect", `docs/18` §7 |
 
-**Command set observed on the wire** (14 write + 4 read):
+**Command set observed on the wire** (14 write + 4 read).
+Only these four `0x8x` reply as reads — see the warning in the README about
+not scanning the others:
 
     0x01 0x02 0x05 0x07 0x08 0x09 0x0A 0x0B 0x0D 0x0E 0x0F 0x12 0x15 0x16
     0x81 0x82 0x89 0x8A

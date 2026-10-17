@@ -43,6 +43,9 @@ goal of this project.
 | Firmware + MCU identified | **done** — `docs/04-firmware.md` |
 | RE tooling (Ghidra 12.1.4 + REA) | **done** — `docs/07-tooling.md` |
 | Analysis of `Setting.dll` in Ghidra | in progress |
+| **Per-key effect data (`0x0B`/`0x12`/`0x15`)** | **solved** — `docs/22` §1 |
+| Event channel `0x83` (ACK, key, brightness) | **mapped** — `docs/22` §2 |
+| Visual view of the protocol | `docs/protocol.html` |
 
 ## Order of work
 
@@ -67,10 +70,19 @@ The gaps of each phase are in section 9 of the specification.
 
 ## Caution
 
-Only write to the keyboard after understanding the structure. There is a
-report on G.SKILL's forum of a KM780 needing a firmware reset via safety-pin
-+ a `.bin` file, which means it is possible to leave the keyboard in a bad
-state. Read commands (`0x8x`) are safe.
+**`0x8x` read commands are NOT safe merely for being `0x8x`.** This was the
+project's premise and it is wrong: sweeping bytes with bit 7 set is what put
+the keyboard into bootloader mode on 2026-10-16. Some value between `0x96`
+and `0xAF` is not a read, despite bit 7.
+
+The "bit 7 means read" convention holds for the **confirmed** write/read
+pairs — `0x01/0x81`, `0x02/0x82`, `0x09/0x89`, `0x0A/0x8A` — not for
+arbitrary bytes. Across the 11 captures of the vendor software only those
+four `0x8x` commands ever answer.
+
+Do not add a command to `tools/km780_probe.py` without having seen that
+command answer in a real capture. Recovery exists and is documented in
+`firmware/recovery/`, but it depends on a Windows machine.
 
 ## Layout
 

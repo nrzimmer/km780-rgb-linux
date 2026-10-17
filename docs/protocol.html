@@ -200,6 +200,7 @@ footer{margin-top:4rem;padding-top:1.2rem;border-top:1px solid var(--rule);
     <div class="meta">
       <span><b>264</b> bytes per packet</span>
       <span><b>18</b> commands on the wire</span>
+  <span><b>23</b> send sites in the DLL</span>
       <span><b>144</b> LED slots, 132 used</span>
       <span><b>3</b> modes</span>
     </div>
@@ -334,10 +335,11 @@ software</b>, so the active mode changes underneath the host.</p>
 <table>
 <thead><tr><th class="m">Evento</th><th>Significado</th><th>Conf.</th></tr></thead>
 <tbody>
-<tr><td class="m">00 00 &lt;cmd&gt; …</td><td>ACK: echo of the command sent, bytes 3–7 unknown</td><td><span class="conf c-i">I</span></td></tr>
-<tr><td class="m">f6 01 XX YY</td><td><b>key pressed</b>: XX = column, YY = row of the physical matrix</td><td><span class="conf c-c">C</span></td></tr>
-<tr><td class="m">02 04 XX 08 01</td><td>third byte = mode; the rest unknown</td><td><span class="conf c-q">?</span></td></tr>
-<tr><td class="m">0B …</td><td>brightness changed from the keyboard's own keys (device→host)</td><td><span class="conf c-c">C</span></td></tr>
+<tr><td class="m">00 00 &lt;cmd&gt; 00 &lt;mode&gt;</td><td>ACK. Byte 4 = <b>mode</b> on the <code>0x01</code>/<code>0x81</code> ones, zero on the rest; bytes 3 and 5–7 zero across all 6,185 captured</td><td><span class="conf c-c">C</span></td></tr>
+<tr><td class="m">f6 01 XX YY</td><td><b>key pressed</b>: XX = column (1–13), YY = row (0–8) of the physical matrix</td><td><span class="conf c-c">C</span></td></tr>
+<tr><td class="m">02 04 M 09 N</td><td><b>brightness</b> changed with the keyboard's keys: N in the range 0–4</td><td><span class="conf c-c">C</span></td></tr>
+<tr><td class="m">02 04 M 08 01</td><td>active mode / keyboard present</td><td><span class="conf c-c">C</span></td></tr>
+<tr><td class="m">02 04 M 04 …</td><td>unknown, 6 occurrences</td><td><span class="conf c-q">?</span></td></tr>
 </tbody>
 </table>
 </div>
@@ -588,8 +590,8 @@ effect and coming back restores the previous value.</p>
 <tbody>
 <tr><td class="m">0x00</td><td><b>none</b> — effects off</td><td>—</td></tr>
 <tr><td class="m">0x01</td><td>Wave</td><td>—</td></tr>
-<tr><td class="m">0x02</td><td>Ripple</td><td class="m">0x0B ×3 channels, buf[4]=0x00</td></tr>
-<tr><td class="m">0x03</td><td>Sonic</td><td class="m">0x0B ×3 channels, buf[4]=0x01</td></tr>
+<tr><td class="m">0x02</td><td>Ripple</td><td class="m">0x0B, channel in buf[4], buf[5]=0</td></tr>
+<tr><td class="m">0x03</td><td>Sonic</td><td class="m">0x0B, channel in buf[4], buf[5]=1</td></tr>
 <tr><td class="m">0x04</td><td>Breathing</td><td>—</td></tr>
 <tr><td class="m">0x07</td><td>Changeling</td><td class="m">0x0E (04 03 fc) + 0x15 ×3</td></tr>
 <tr><td class="m">0x08</td><td><b>Checkpoint</b> — uses "Transition Point" (number of keys) instead of duration/direction</td><td>—</td></tr>
@@ -597,11 +599,38 @@ effect and coming back restores the previous value.</p>
 <tr><td class="m">0x0A</td><td>Rain</td><td class="m">0x0F (03 03 fc) + 0x12 ×3</td></tr>
 </tbody>
 </table>
-<p style="font-size:.84rem;color:var(--dim);max-width:62ch">The "×3
-channels" helpers use <code>buf[3] = 1, 2, 3</code>, the same R/G/B convention as the
-<code>0x09</code>. They came with a zeroed payload: they are a per-key mask or color, and
-<b>the UI only applies a global effect</b>, so there is no way to exercise them through it.
-<span class="conf c-i">I</span></p>
+<p style="font-size:.84rem;color:var(--dim);max-width:62ch">The helpers use
+<code>buf[4] = 1, 2, 3</code> for the channel — <b>not</b> <code>0x09</code>'s
+<code>buf[3]</code>. They came with a zeroed payload because the UI only
+applies a global effect, but the field exists: see below.</p>
+
+<h3>The 144 per-key bytes of <code>0x0B</code>, <code>0x12</code> and <code>0x15</code></h3>
+<div class="col">
+<p>This was the biggest gap — the one the specification called <b>impossible to
+settle by capture</b>. It came out of decompiling <code>FUN_100d7170</code>,
+which builds all three commands in the same place.</p>
+</div>
+
+<div class="scroll">
+<div class="ruler" style="min-width:760px">
+  <div class="fld" style="--c:var(--f-id);flex:1 1 7px"><span class="off">0</span><span class="nm">07</span></div>
+  <div class="fld" style="--c:var(--f-cmd);flex:2 1 14px"><span class="off">1</span><span class="nm">0B · 12 · 15</span><span class="vl">by effect</span></div>
+  <div class="fld" style="--c:var(--f-idx);flex:1 1 7px"><span class="off">2</span><span class="nm">mode+1</span></div>
+  <div class="fld unk" style="--c:var(--f-unk);flex:1 1 7px"><span class="off">3</span><span class="nm">param A</span></div>
+  <div class="fld" style="--c:var(--f-page);flex:2 1 14px"><span class="off">4</span><span class="nm">channel</span><span class="vl">1=R 2=G 3=B</span></div>
+  <div class="fld" style="--c:var(--f-cmd);flex:2 1 14px"><span class="off">5</span><span class="nm">Ripple/Sonic</span><span class="vl">0B only</span></div>
+  <div class="fld" style="--c:var(--f-data);flex:20 1 150px"><span class="off">8–151</span><span class="nm">144 bytes, one per LED slot — the same table as 0x09</span><span class="vl">quantized &amp; 0xfc</span></div>
+</div>
+</div>
+
+<div class="note">
+  <div class="hd">Why the capture showed all zeros</div>
+  <p>The code has both branches, and the one that zeroes is explicit: when the
+  effect is not in the per-key state, it does <code>memset(buf+8, 0, 144)</code>
+  before sending. The official UI only applies a global effect, so the app sends
+  a zeroed array. <b>The field exists and is mapped; what is missing is a UI
+  state that fills it</b> — a limitation of the manufacturer's tool, not of the protocol.</p>
+</div>
 </div>
 
 <h3>The color stop · <code>0x0A</code> subpages 02/05/08</h3>
@@ -741,12 +770,13 @@ left, and why.</p>
 <table>
 <thead><tr><th>Item</th><th>Why it is still open</th></tr></thead>
 <tbody>
-<tr><td class="m">0x0B 0x0E 0x0F 0x12 0x15<br>with per-key data</td><td><b>capture does not settle it</b> — the UI only applies a global effect. It only comes out by decompilation.</td></tr>
+<tr><td class="m">0x0E, 0x0F</td><td>shape observed (base every 71 bytes, <code>fc</code> every 24), but the two regularities do not close into a layout. The function that builds them still has to be found.</td></tr>
+<tr><td class="m">0x08 beyond byte 76</td><td>the 69 gradient bytes are right, but bytes up to 200 vary too</td></tr>
+<tr><td class="m">6 send sites</td><td>of the 23 calls to SetFeature, 6 have not yet been assigned to a command</td></tr>
 <tr><td>the macro's Playback Option</td><td>a dropdown of 4 options; the byte was not located</td></tr>
 <tr><td class="m">byte 108 vs byte 119</td><td>they are two distinct toggles (all lighting, volume display); which is which is still to be said</td></tr>
 <tr><td class="m">bytes 72–107</td><td>partial: 75–77 = number of color stops</td></tr>
-<tr><td class="m">buf[5], bytes 6–7</td><td>they came out zero in everything captured</td></tr>
-<tr><td class="m">the 02 04 XX 08 event</td><td>third byte = mode; the rest unknown</td></tr>
+<tr><td class="m">the 02 04 M 04 … event</td><td>6 occurrences, meaning unknown</td></tr>
 <tr><td>LED Sleep</td><td>the control was never captured</td></tr>
 <tr><td class="m">reading page 0x09</td><td>the app never reads it. <b>Safe to test on Linux</b></td></tr>
 </tbody>
@@ -759,9 +789,9 @@ left, and why.</p>
 </div>
 
 <footer>
-  <div>Source: <b>docs/09-protocol.md</b>, the canonical document, and
-  docs 12–21, one per capture. This page is a view of them, not the
-  specification.</div>
+  <div>Source: <b>docs/09-protocol.md</b>, the canonical document, docs 12–21
+  (one per capture) and <b>docs/22-gaps-solved.md</b>. This page is a view of
+  them, not the specification.</div>
   <div style="margin-top:.4rem">Captures in <b>captures/</b> · full map of
   slots in <b>docs/10-key-map.md</b> · km780-rgb-linux</div>
 </footer>

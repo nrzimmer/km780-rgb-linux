@@ -1,33 +1,54 @@
 #!/usr/bin/env python3
-"""Read-only probing of the KM780 RGB: takes snapshots and compares them.
+"""Probing the KM780 RGB: takes snapshots of the read commands and compares.
 
-Idea: read the unknown commands in two different keyboard states (e.g.
-maximum and minimum brightness) and compare. Whatever changes locates the field.
+Reads the same command in two different keyboard states (e.g. maximum and
+minimum brightness) and compares them. Whatever changes locates the field.
 
 Subcommands:
-  snap <file>         reads every 0x8x command and saves
-  diff <a> <b>        compares two snapshots, byte by byte
-  listen [seconds]    listens to the 8-byte event channel on EP 0x83
+  snap <file>         read the CONFIRMED read commands and save
+  diff <a> <b>        compare two snapshots, byte by byte
+  listen [seconds]    listen to the 8-byte event channel on EP 0x83
+
+WARNING -- READ BEFORE TOUCHING THE READS LIST
+----------------------------------------------
+An earlier version of this file swept 0x85, 0x88, 0x8B, 0x8D, 0x92 and 0x96
+"because they have bit 7 set, so they are reads". **That sweep is what put the
+keyboard into bootloader mode.** Some byte between 0x96 and 0xAF is not a read,
+despite bit 7.
+
+The "bit 7 means read" convention holds for the confirmed write/read pairs, NOT
+for arbitrary bytes. READS below only contains commands that were seen
+answering as a read in a real USB capture of the official software. Do not add
+anything there without that evidence: recovery exists, but it depends on a
+Windows machine with FWUpdate.exe (see firmware/recovery/).
 """
 import sys, time, json
 import usb.core, usb.util
 sys.path.insert(0, __file__.rsplit('/', 1)[0])
 from km780_led import KB, HDR, NSLOTS, PKT
 
-# read commands: bit 7 set. The named ones and the ones found in the DLL.
+# Only read commands CONFIRMED on the wire -- see the warning at the top.
+# These four are the only ones that appear as GET in the 11 captures
+# (captures/*.txt, check with: awk -F'\t' '$3=="GET"{print $4}' | sort -u).
 READS = {
-    0x81: 'Current Profile',
-    0x82: 'Profile Information',
-    0x85: '(unknown)',
-    0x88: 'LED Effect Database?',
+    0x81: 'Current Mode',
+    0x82: 'Mode Information',
     0x89: 'LED Matrix Database',
-    0x8A: '(unknown)',
-    0x8B: '(unknown, paged)',
-    0x8D: '(predicted, not observed)',
-    0x92: '(unknown, paged)',
-    0x96: '(predicted, not observed)',
+    0x8A: 'page-indexed database',
+}
+
+# Never observed answering as a read. Kept here only to record that they were
+# tried and why they are not in READS.
+DO_NOT_SWEEP = {
+    0x85: 'the write 0x05 exists, but 0x85 never answered in a capture',
+    0x88: 'the abandoned repo calls it "LED Effect Database"; does not exist in v2.04',
+    0x8B: 'cited in the app timing, never seen on the wire',
+    0x8D: 'predicted by the bit-7 rule, never observed',
+    0x92: 'cited in the app timing, never seen on the wire',
+    0x96: 'predicted by the bit-7 rule, never observed -- a suspect range',
 }
 EP_IN = 0x83
+
 
 def snap(kb, path, label):
     out = {'label': label, 'data': {}}
@@ -42,6 +63,7 @@ def snap(kb, path, label):
         print('  0x%02X read (%s)' % (cmd, READS[cmd]))
     json.dump(out, open(path, 'w'))
     print('snapshot "%s" saved to %s' % (label, path))
+
 
 def diff(pa, pb):
     a = json.load(open(pa)); b = json.load(open(pb))
@@ -62,6 +84,7 @@ def diff(pa, pb):
     if not found:
         print('  no difference in any command.')
 
+
 def listen(kb, secs):
     print('### listening on EP 0x%02x for %ds -- change the keyboard brightness now' % (EP_IN, secs))
     t0 = time.time()
@@ -74,6 +97,7 @@ def listen(kb, secs):
         seen += 1
         print('  %6.2fs  %s' % (time.time() - t0, ' '.join('%02x' % c for c in r)))
     print('### %d report(s) received' % seen)
+
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:

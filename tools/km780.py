@@ -18,13 +18,17 @@ REQ_OUT = usb.util.CTRL_TYPE_CLASS | usb.util.CTRL_RECIPIENT_INTERFACE | usb.uti
 REQ_IN  = usb.util.CTRL_TYPE_CLASS | usb.util.CTRL_RECIPIENT_INTERFACE | usb.util.CTRL_IN
 SET_REPORT, GET_REPORT = 0x09, 0x01
 
+# Only read commands confirmed in the USB captures of the official software.
+# 0x88 ("GetLEDEffectDatabase" in the abandoned repo) was removed: it does not
+# exist in Setting.dll v2.04 and never answered on the wire. See the warning in
+# km780_probe.py.
 CMDS = {
-    "profile":     0x81,   # GetCurrentProfile       (answer: interrupt)
-    "profinfo":    0x82,   # GetProfileInformation   (answer: control IN)
-    "ledeffect":   0x88,   # GetLEDEffectDatabase    (answer: control IN)
-    "ledmatrix":   0x89,   # GetLEDMatrixDatabase    (answer: control IN)
+    "mode":        0x81,   # Current Mode            (answer: event on EP 0x83)
+    "modeinfo":    0x82,   # Mode Information        (answer: control IN)
+    "ledmatrix":   0x89,   # LED Matrix Database     (answer: control IN)
+    "database":    0x8A,   # page-indexed database   (answer: control IN)
 }
-CONTROL_RESP = {0x82, 0x88, 0x89}
+CONTROL_RESP = {0x82, 0x89, 0x8A}
 
 
 class KM780:
@@ -59,8 +63,11 @@ class KM780:
                 r = bytes(self.dev.read(EP_IN, 8, TIMEOUT))
             except usb.core.USBError:
                 continue
+            # EP 0x83 mixes ACKs with the keyboard's spontaneous events
+            # (f6 01 col row = key; 02 04 mode 09 level = brightness), so
+            # filtering by the command echo is not optional.
             if len(r) >= 3 and r[0] == 0 and r[1] == 0 and r[2] == command:
-                ack = r
+                ack = r      # ack[4] = mode on commands 0x01/0x81, otherwise 0
                 break
         data = None
         if command in CONTROL_RESP:
