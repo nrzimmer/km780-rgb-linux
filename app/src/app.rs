@@ -9,6 +9,7 @@ use std::collections::HashSet;
 use eframe::egui;
 use egui::{Color32, Pos2, Rect, Sense, Stroke, Vec2};
 
+use crate::effects;
 use crate::layout;
 use crate::proto::{self, Channels, Keyboard};
 use crate::slots::{self, NSLOTS};
@@ -16,6 +17,36 @@ use crate::slots::{self, NSLOTS};
 /// Side of a 1u key, in pixels.
 const UNIDADE: f32 = 38.0;
 const FOLGA: f32 = 3.0;
+
+/// Everything the app reads and edits of a mode: the colors and the mode payload.
+///
+/// The two travel together because `Apply` is a single action -- the user
+/// should not need to know that color goes over 0x09 and brightness over 0x02.
+#[derive(Clone, PartialEq)]
+struct State {
+    colors: Vec<[u8; 3]>,
+    /// The 264 bytes of the mode payload, as they came from 0x82.
+    ///
+    /// Kept **whole** on purpose: only bytes 10 and 11 are edited and
+    /// all the rest travels intact through the round-trip. That is what allows touching the
+    /// known without understanding the rest (`docs/29`, rule 3).
+    info: Vec<u8>,
+}
+
+impl State {
+    fn new_payload() -> State {
+        State { colors: vec![[0, 0, 0]; NSLOTS], info: Vec::new() }
+    }
+    fn effect(&self) -> u8 {
+        self.info.get(proto::OFF_EFFECT).copied().unwrap_or(0)
+    }
+    fn brightness(&self) -> u8 {
+        self.info.get(proto::OFF_BRIGHTNESS).copied().unwrap_or(0)
+    }
+    fn has_info(&self) -> bool {
+        self.info.len() == proto::PKT
+    }
+}
 
 pub struct App {
     /// Device name of the last successful connection, just for the header.
@@ -25,22 +56,16 @@ pub struct App {
     /// the mode inside the keyboard, without telling the host.
     mode: u8,
     /// What the keyboard has today -- the source of truth.
-    stored: Vec<[u8; 3]>,
+    stored: State,
     /// The editable copy.
-    buffer: Vec<[u8; 3]>,
+    buffer: State,
     /// State before the last `Apply`, for the undo.
-    undo: Option<Vec<[u8; 3]>>,
+    undo: Option<State>,
     selection: HashSet<usize>,
     color: [u8; 3],
-    effect: u8,
-    brightness: u8,
     status: String,
     error: Option<String>,
     show_others: bool,
-}
-
-fn empty() -> Vec<[u8; 3]> {
-    vec![[0, 0, 0]; NSLOTS]
 }
 
 impl App {
@@ -48,13 +73,11 @@ impl App {
         let mut app = App {
             device: None,
             mode: 1,
-            stored: empty(),
-            buffer: empty(),
+            stored: State::new_payload(),
+            buffer: State::new_payload(),
             undo: None,
             selection: HashSet::new(),
             color: [255, 0, 0],
-            effect: 0,
-            brightness: 0,
             status: String::new(),
             error: None,
             show_others: false,
@@ -102,46 +125,63 @@ impl App {
 
     /// Reads the whole keyboard: active mode, mode payload and the three channels.
     fn refresh(&mut self) {
-        let r = self.with_keyboard(|kb| -> Result<(u8, u8, u8, Channels), String> {
+        let r = self.with_keyboard(|kb| -> Result<(u8, Vec<u8>, Channels), String> {
             let mode = kb.active_mode()?;
             if !(1..=3).contains(&mode) {
                 return Err(format!("the 0x81 replied mode={mode}, outside 1..3"));
             }
             let info = kb.read_mode(mode)?;
             let colors = kb.read_colors(mode)?;
-            Ok((mode, info[proto::OFF_EFFECT], info[proto::OFF_BRIGHTNESS], colors))
+            Ok((mode, info, colors))
         });
-        if let Some((mode, effect, brightness, colors)) = r {
+        if let Some((mode, info, colors)) = r {
             self.mode = mode;
-            self.effect = effect;
-            self.brightness = brightness;
-            self.stored = (0..NSLOTS)
-                .map(|i| [colors[0][i], colors[1][i], colors[2][i]])
-                .collect();
+            self.stored = State {
+                colors: (0..NSLOTS)
+                    .map(|i| [colors[0][i], colors[1][i], colors[2][i]])
+                    .collect(),
+                info,
+            };
             self.buffer = self.stored.clone();
             self.selection.clear();
             self.status = format!("stored do mode {mode}");
         }
     }
 
+    /// How many keys have a color different from the one read.
     fn dirty_keys(&self) -> usize {
-        (0..NSLOTS).filter(|&i| self.buffer[i] != self.stored[i]).count()
+        (0..NSLOTS)
+            .filter(|&i| self.buffer.colors[i] != self.stored.colors[i])
+            .count()
+    }
+
+    /// Whether brightness or effect were touched. They are the mode payload,
+    /// which goes by a different command than color, but through the same `Apply`.
+    fn mode_dirty(&self) -> bool {
+        self.buffer.has_info() && self.buffer.info != self.stored.info
+    }
+
+    fn pending_changes(&self) -> usize {
+        self.dirty_keys() + usize::from(self.mode_dirty())
     }
 
     /// Writes the buffer. Since color goes in three packets, one per channel,
     /// and there is no partial channel write (`docs/09` §6.4), any change
     /// resends the whole matrix on all three.
     fn apply(&mut self) {
-        if self.dirty_keys() == 0 {
+        if self.pending_changes() == 0 {
             self.status = "nada a apply".into();
             return;
         }
         let channels: Channels = [
-            self.buffer.iter().map(|c| c[0]).collect(),
-            self.buffer.iter().map(|c| c[1]).collect(),
-            self.buffer.iter().map(|c| c[2]).collect(),
+            self.buffer.colors.iter().map(|c| c[0]).collect(),
+            self.buffer.colors.iter().map(|c| c[1]).collect(),
+            self.buffer.colors.iter().map(|c| c[2]).collect(),
         ];
         let n = self.dirty_keys();
+        let color_dirty = n > 0;
+        let mode_dirty = self.mode_dirty();
+        let info = self.buffer.info.clone();
         let mode = self.mode;
         // Re-read the mode before writing: the M1/M2/M3 keys switch the mode
         // inside the keyboard without telling the host (`docs/29`, rule 4), and writing
@@ -154,12 +194,24 @@ impl App {
                      -- someone pressed M1/M2/M3. Reload before applying."
                 ));
             }
-            kb.write_colors(mode, &channels)
+            // The mode payload first: if the user turned the effect off to see
+            // the static color, it is the color that should arrive last.
+            if mode_dirty {
+                kb.write_mode(mode, &info)?;
+            }
+            if color_dirty {
+                kb.write_colors(mode, &channels)?;
+            }
+            Ok(())
         });
         if ok.is_some() {
             self.undo = Some(self.stored.clone());
             self.stored = self.buffer.clone();
-            self.status = format!("{n} key(s) written in mode {mode}");
+            self.status = match (color_dirty, mode_dirty) {
+                (true, true) => format!("{n} key(s) and mode {mode} written"),
+                (true, false) => format!("{n} key(s) written in mode {mode}"),
+                _ => format!("brightness/effect written in mode {mode}"),
+            };
         }
     }
 
@@ -182,7 +234,7 @@ impl App {
             return;
         }
         for &i in &self.selection {
-            self.buffer[i] = color;
+            self.buffer.colors[i] = color;
         }
         self.status = format!("{} key(s) painted in the buffer", self.selection.len());
     }
@@ -200,8 +252,8 @@ impl eframe::App for App {
                     Some(name) => {
                         ui.strong(name);
                         ui.label(format!("mode {}", self.mode));
-                        ui.label(format!("brightness {}", self.brightness));
-                        ui.label(format!("effect {}", self.effect));
+                        ui.label(format!("brightness {}", self.stored.brightness()));
+                        ui.label(format!("effect: {}", effects::name(self.stored.effect())));
                     }
                     None => {
                         ui.colored_label(Color32::from_rgb(220, 120, 80), "no keyboard");
@@ -212,13 +264,14 @@ impl eframe::App for App {
                     self.refresh();
                 }
             });
-            if self.effect != 0 {
+            if self.buffer.effect() != 0 {
                 ui.colored_label(
                     Color32::from_rgb(220, 180, 80),
                     format!(
-                        "Mode {} has effect {} on -- the static color \
-                         is hidden by the animation.",
-                        self.mode, self.effect
+                        "Mode {} has the effect \"{}\" on -- the static \
+                         color is hidden by the animation.",
+                        self.mode,
+                        effects::name(self.buffer.effect())
                     ),
                 );
             }
@@ -228,7 +281,7 @@ impl eframe::App for App {
         });
 
         egui::Panel::bottom("barra").show(ui, |ui| {
-            let dirty_keys = self.dirty_keys();
+            let dirty_keys = self.pending_changes();
             ui.horizontal(|ui| {
                 let can = dirty_keys > 0;
                 if ui.add_enabled(can, egui::Button::new("Apply")).clicked() {
@@ -304,6 +357,15 @@ impl eframe::App for App {
             ui.label(format!("{} selected(s)", self.selection.len()));
 
             ui.add_space(12.0);
+            ui.separator();
+            ui.heading("Mode");
+            if self.buffer.has_info() {
+                self.mode_controls(ui);
+            } else {
+                ui.label("no mode payload read");
+            }
+
+            ui.add_space(12.0);
             ui.collapsing("Outros slots", |ui| {
                 ui.label(
                     "Named slots the drawing does not place: international \
@@ -354,6 +416,53 @@ impl eframe::App for App {
 }
 
 impl App {
+    /// Brightness and effect: bytes 11 and 10 of the mode payload.
+    ///
+    /// Both are **read-change-write** -- they edit one byte of the payload that
+    /// came from the 0x82 and the rest travels intact. Like everything in the app, nothing goes to
+    /// the keyboard before `Apply`.
+    fn mode_controls(&mut self, ui: &mut egui::Ui) {
+        let mut brightness = self.buffer.brightness();
+        // Brightness is 0..4 (`docs/09`). It is not a percentage: it is five steps,
+        // the same ones the keyboard's brightness key walks through.
+        if ui
+            .add(egui::Slider::new(&mut brightness, 0..=4).text("brightness"))
+            .changed()
+        {
+            self.buffer.info[proto::OFF_BRIGHTNESS] = brightness;
+        }
+
+        let current = self.buffer.effect();
+        let mut chosen = current;
+        egui::ComboBox::from_label("effect")
+            .selected_text(effects::name(current))
+            .show_ui(ui, |ui| {
+                for (v, name, _) in effects::CATALOG {
+                    ui.selectable_value(&mut chosen, *v, *name);
+                }
+            });
+        if chosen != current {
+            self.buffer.info[proto::OFF_EFFECT] = chosen;
+        }
+        let note = effects::note(chosen);
+        if !note.is_empty() {
+            ui.small(note);
+        }
+
+        if self.mode_dirty() {
+            ui.colored_label(
+                Color32::from_rgb(240, 200, 100),
+                format!(
+                    "mode pending: brightness {} -> {}, effect {} -> {}",
+                    self.stored.brightness(),
+                    self.buffer.brightness(),
+                    self.stored.effect(),
+                    self.buffer.effect()
+                ),
+            );
+        }
+    }
+
     fn draw_keyboard(&mut self, ui: &mut egui::Ui) {
         let (lu, lv) = layout::extent();
         let size = Vec2::new(lu * UNIDADE + 8.0, lv * UNIDADE + 8.0);
@@ -384,7 +493,7 @@ impl App {
                 drags.push(slot);
             }
 
-            let color = cor32(self.buffer[slot]);
+            let color = cor32(self.buffer.colors[slot]);
             // The raw color is nearly invisible in the dark; the key background
             // mixes in a grey so the key still reads when it is off.
             let fill = Color32::from_rgb(
@@ -394,7 +503,7 @@ impl App {
             );
             p.rect_filled(r, 4.0, fill);
 
-            let dirty = self.buffer[slot] != self.stored[slot];
+            let dirty = self.buffer.colors[slot] != self.stored.colors[slot];
             let selected = self.selection.contains(&slot);
             let stroke_style = if selected {
                 Stroke::new(2.5, Color32::from_rgb(120, 200, 255))

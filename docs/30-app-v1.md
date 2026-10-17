@@ -6,12 +6,13 @@
 
 ## O que existe
 
-`app/`, 1000 lines, four modules:
+`app/`, five modules:
 
     src/proto.rs    HID Feature report 7 transport, mirroring km780lib.py
     src/slots.rs    the 132 slot names, GENERATED from the Python list
     src/layout.rs   the physical layout, written by hand, with a test
-    src/app.rs      the single screen: clickable matrix, color, Apply/Discard
+    src/effects.rs  the byte 10 catalog, from the canonical table in docs/09 §7.1
+    src/app.rs      the single screen: matrix, color, brightness, effect, Apply
 
 It builds on both targets, with no warnings:
 
@@ -74,9 +75,11 @@ Read, with `km780 --probe`:
     0x89 ok: 127 slots lit
       F1   slot  18  #00FB2F
 
-Write, with `km780 --paint F1,F2,F3 ff0000`:
+Color write, with `km780 --paint F1,F2,F3 ff0000`:
 
     the re-read matches what was written, across the 144 slots of the 3 channels
+
+Brightness and effect write: the one-byte diff from the section above.
 
 The check is always by re-reading with `0x89`, never by eye: this
 unit has LEDs with the R component stuck (`docs/27` §10).
@@ -88,16 +91,49 @@ Doc 29 said the Linux build needs `libudev`. It also needs the
 
     dnf install libusb1-devel systemd-devel
 
+## Brightness and effect: the round-trip, proven instead of assumed  [C]
+
+Brightness (byte 11) and effect (byte 10) go in through the **same `Apply`** as the color.
+The user should not have to know that color goes through the `0x09` and brightness through the
+`0x02`; that is why the app's editable state carries the 264 bytes of the mode
+payload along with the 144 color slots, and `Apply` writes whatever is dirty
+on either side -- the payload first, so the color arrives last when the
+user turns the effect off precisely to see the static color.
+
+Rule 3 of `docs/29` requires unknown fields to travel intact through the
+round-trip. That is now **measured**, not trusted. `km780 --brightness N` and
+`km780 --effect N` do the read-change-write and print the diff of the payload
+payload:
+
+    mode 2: brightness 4 -> 2    bytes that changed in the 264-byte payload: [11]
+    mode 2: effect 0 -> 4    bytes that changed in the 264-byte payload: [10]
+    mode 2: effect 4 -> 0    bytes that changed in the 264-byte payload: [10]
+
+**One byte of the 264, all three times.** Byte 3 (status), which the write zeroes
+on purpose, comes back on the re-read as it was -- not even it shows up in the diff.
+
+The effect catalog in `src/effects.rs` is the one in `docs/09` §7.1, which is the
+union of what the captures saw with what the decompilation confirmed. It includes the
+`0x06` -- the key that lights up on press and never goes dark --, which the official UI
+does not offer and the DLL has no branch for, but the firmware runs
+(`docs/27` §10). The `0x05` is left out: no branch, no capture.
+
+For the effects that take color from a stored gradient (Ripple, Sonic,
+Changeling, Rain), the app only changes byte 10 -- the animation comes out with the
+gradient already on the keyboard. The combo says so on each one, because
+otherwise it looks as if the color picker stopped working.
+
 ## What v1 does, and what it does not
 
 It does: read the active mode, the mode payload and the three color channels; draw the
-keyboard; edit a local buffer; `Apply` writes, `Discard` re-reads,
-`Undo` goes back to the state before the last `Apply`.
+keyboard; edit a local buffer of color, brightness and effect; `Apply` writes,
+`Discard` re-reads, `Undo` goes back to the state before the last `Apply`.
 
 It does not, on purpose:
 
-- **Brightness and effect** are only displayed, not edited. They are the next step, and
-  `proto::write_mode` is already there and tested from the read side.
+- **The effect gradients** (`0x0B`/`0x0E`/`0x0F`/`0x12`/`0x15`) are not
+  editable -- only the byte that turns the effect on. They are the next step, along with the
+  key remapping from `docs/28`.
 - **`NumSep` has no position in the drawing.** `docs/25` calls the key
   `NumEnter`, the slot list has `NumSep`, and it is not obvious they are the same.
   Guessing would put color on the wrong key; it stays in the "Other slots" list.
@@ -108,8 +144,8 @@ It does not, on purpose:
 
 Of the five rules in `docs/29` §"Rules the app cannot violate": only
 `0x81`, `0x82`, `0x89` and `0x09` are sent; the `0x16` never; the mode
-mode would only be written by read-change-write; the mode is **re-read before
-every `Apply`** and the write is refused if it changed (M1/M2/M3 switch the mode
+payload is only written by read-change-write, and that is measured; the mode is
+**re-read before every `Apply`** and the write is refused if it changed (M1/M2/M3 switch the mode
 inside the keyboard); and the timing is the one in `docs/09` §2, 10/20/+100 ms.
 
 The header warns when the mode has effect != 0, because then the static

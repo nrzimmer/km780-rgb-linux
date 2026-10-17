@@ -7,6 +7,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app;
+mod effects;
 mod layout;
 mod proto;
 mod slots;
@@ -98,7 +99,53 @@ fn paint_cmd(keys: &str, color: &str) {
     }
 }
 
+/// `km780 --brightness 2` / `km780 --effect 4`: read-change-write of one byte
+/// of the mode payload, and **a diff of the whole payload afterwards**.
+///
+/// The diff is the point. Rule 3 of `docs/29` requires the unknown fields to
+/// travel intact through the round-trip; this proves they do, instead of
+/// trusting that they do. Measured on mode 2: of the 264 bytes, exactly what
+/// was asked for changes.
+fn set_mode_byte(offset: usize, value: &str) {
+    let v: u8 = value.parse().expect("numeric value");
+    if offset == proto::OFF_BRIGHTNESS {
+        assert!(v <= 4, "brightness is 0..4 (docs/09)");
+    }
+
+    let kb = proto::Keyboard::open_device().expect("could not open");
+    let mode = kb.active_mode().expect("0x81");
+    let before = kb.read_mode(mode).expect("0x82");
+    println!(
+        "mode {mode}: brightness {} effect {} -> byte {offset} = {v}",
+        before[proto::OFF_BRIGHTNESS],
+        before[proto::OFF_EFFECT]
+    );
+
+    let mut new_payload = before.clone();
+    new_payload[offset] = v;
+    kb.write_mode(mode, &new_payload).expect("0x02");
+
+    let after = kb.read_mode(mode).expect("0x82 back");
+    let diffs: Vec<usize> = (0..proto::PKT)
+        .filter(|&i| after[i] != before[i])
+        .collect();
+    println!("bytes that changed in the 264-byte payload: {diffs:?}");
+    for i in diffs {
+        println!("  byte {i}: {:#04x} -> {:#04x}", before[i], after[i]);
+    }
+}
+
 fn main() -> eframe::Result<()> {
+    let argv0: Vec<String> = std::env::args().collect();
+    if let Some(p) = argv0.iter().position(|a| a == "--brightness") {
+        set_mode_byte(proto::OFF_BRIGHTNESS, &argv0[p + 1]);
+        return Ok(());
+    }
+    if let Some(p) = argv0.iter().position(|a| a == "--effect") {
+        set_mode_byte(proto::OFF_EFFECT, &argv0[p + 1]);
+        return Ok(());
+    }
+
     let argv: Vec<String> = std::env::args().collect();
     if let Some(p) = argv.iter().position(|a| a == "--paint") {
         paint_cmd(&argv[p + 1], &argv[p + 2]);
