@@ -309,3 +309,60 @@ with a **Text**'s content, remains unanswered.  `[?]`
 No key containing `Win` or `Lock` exists in the block. Consistent with byte 109
 (§8): the lock is a **keyboard** function, toggled by the bag-symbol key, and
 the app does not configure it.
+
+---
+
+## 12. 107 and 108: written, with no effect  [C]
+
+Tested on hardware with `tools/km780toggle.py`: each one set to `0` and to `1`,
+on mode 2, **with a mode switch on the keyboard itself between the steps**.
+**No visible change in any combination.**
+
+The firmware accepts the write — a re-read returns the stored value — but
+nothing happens to the lighting.
+
+### The neighbouring-command hypothesis also fell
+
+In the captures, every inversion of 107/108/119 comes immediately after an
+`0x08` or three `0x09`, which suggested the visible effect came from the
+neighbour and not from the flag. Looking at their content:
+
+    119 -> 1:  the three 0x09 carry 127 red slots (the NORMAL lighting)
+    108 -> 0:  0x08 with 44 non-zero bytes
+    107 -> 0:  0x08 with 44 non-zero bytes, identical to the previous one
+
+It is no blanking at all. What those commands are is the **app's save routine**,
+which on every UI action rewrites everything: `0x0D` in, send the change, write
+the active mode, sweep the `0x0A` subpages, rewrite **all three modes**, and
+`0x0D` out. The flags travel along because they are part of the payload, not
+because they cause anything.
+
+### What that leaves  [I]
+
+The three bytes look like **stored state, not control**: the app records the
+ticked box inside the keyboard's memory — probably so the configuration travels
+with the device — and whatever applies the effect would be the app itself,
+while it runs.
+
+That is consistent with what `19-capture-08-closing.md` §4 already recorded: the
+user reported, **on Windows**, that touching those toggles had no effect. Now we
+know it has no effect from Linux either, not even with a mode switch. The
+simplest reading is that **the feature does not work**, rather than that a
+command is missing.
+
+### What was poorly designed in the test
+
+The test ran on **mode 2, whose effect is 0 (static)**. If either of the two is
+"turn off the lighting *effect*" — the hypothesis that `18-capture-07-final.md`
+§7 supports, when it says the "Static Base Color" is the inverse of "Enable
+Lighting Effect" — then **there was no effect to turn off at all**, and the
+test could not show anything.
+
+It still has to be repeated on **mode 3**, which has Wave active. Until that is
+done, the result above holds for the static case and nothing more.
+
+### Practical consequence for the tooling
+
+None, and that is good: the three bytes should be **preserved through the
+round-trip** and not touched. Read-change-the-byte-that-matters-write already
+does that.
