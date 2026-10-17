@@ -393,9 +393,9 @@ fn macro_write(name: &str, target: Option<u8>) {
         None => kb.active_mode().expect("0x81"),
     };
     println!("mode {mode}: writing {} event(s) to bank 1", m.events.len());
-    // The official app's whole sequence: frame opened, the three banks,
-    // frame closed. Banks 2 and 3 go out zeroed, as in the capture.
-    kb.write_macro(mode, 0, &payload).expect("0x05");
+    // The official app's whole sequence: frame opened, the three banks, frame
+    // closed. Banks 2 and 3 go out zeroed, as in the capture.
+    kb.write_macro(mode, 0, &m.name, &payload).expect("0x05");
 
     // An immediate re-read returns the old content -- measured. Waiting is part
     // of the check, not ceremony.

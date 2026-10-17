@@ -468,6 +468,35 @@ On screen, the `0xB4` warning names the key: `only G1-G6 run macros: LCtrl
 would go silent instead`. Naming matters because the failure is silent -- the
 key simply stops working, with no error and no clue.
 
+### And a macro of OURS plays too
+
+The test above proved that the `0xB4` plays -- but it played a macro the official
+app had written. This app's whole path was only validated with a
+macro written by us: `F13`, 2.5 s, `F14`, 2.5 s, `F15`, with keys deliberately
+inert so as not to type anything anywhere. It came out on the listener with
+**2.55 s and 2.56 s** between the events -- the 2.50 s programmed plus the release
+de 0,06 s.
+
+With that the cycle closes end to end: record in the window, encode the `0x05`,
+write to all three banks, name it in the `0x0A` database, assign `0xB4` to a G
+G key, play.
+
+The name now goes **along with** the write, on both paths, because the official
+app always sends both and because the name is the only thing the keyboard has to
+tell one macro from another -- `0x05` stores no name. A macro with no name is
+still writable: the name is the keyboard's requirement, not the user's, and the
+app puts `Macro` when the field is empty.
+
+### A slip of mine worth recording
+
+I wrote into the name database (`0x0A` page `0x09`) **without having read**
+what was there first. `0x8A` reads that database and is safe; I should have
+taken the portrait first. The macro's content I had saved with `--macro-import`,
+so it came back exact; the name I restored as `Macro1(1)`, which is what the
+capture in `docs/16` §2 shows being written there -- **restoration by inference,
+not by reading**. The rule the project already applied to the mode bytes holds
+for any indexed database: read before writing, always.
+
 ## A bug the macro section found in the rest of the app
 
 `slots::slot_of` accepts a name **or a number**, and used to try the number

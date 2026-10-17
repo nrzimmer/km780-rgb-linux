@@ -1283,7 +1283,7 @@ impl App {
                 match macros::encode(&m) {
                     Err(e) => self.error = Some(e),
                     Ok(payload) => self.task(move |kb| {
-                        kb.write_macro(mode, 0, &payload)?;
+                        kb.write_macro(mode, 0, &m.name, &payload)?;
                         // An immediate re-read returns the old content --
                         // measured on the wire. The wait is part of the check.
                         std::thread::sleep(std::time::Duration::from_millis(500));

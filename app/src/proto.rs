@@ -256,7 +256,11 @@ impl Keyboard {
     /// **It is not read-change-write**, and it could not be: the packet is the
     /// macro's entire content, there is no unknown neighbouring field to
     /// preserve -- the zeroed tail **is** the end of the list.
-    pub fn write_macro(&self, mode: u8, index: u8, payload: &[u8]) -> Res<()> {
+    ///
+    /// `name` goes along with the write because the official app always sends
+    /// the two together (`docs/16` §2) and because it is the only thing the
+    /// keyboard has to tell one macro from another -- `0x05` stores no name.
+    pub fn write_macro(&self, mode: u8, index: u8, name: &str, payload: &[u8]) -> Res<()> {
         if payload.len() != PKT - HDR {
             return Err(format!(
                 "macro payload has {} bytes, expected {}",
@@ -269,7 +273,10 @@ impl Keyboard {
         for bank in [2u8, 3] {
             self.write_macro_bank(mode, index, bank, &empty)?;
         }
-        Ok(())
+        // A macro with no name still has to be writable: the name is the
+        // keyboard's requirement, not the user's.
+        let name = name.trim();
+        self.write_macro_name(index, if name.is_empty() { "Macro" } else { name })
     }
 
     /// Writes a macro's name into database `0x0A` page `0x09`.
@@ -283,9 +290,13 @@ impl Keyboard {
     /// the official app writes alongside that we were not writing.
     pub fn write_macro_name(&self, index: u8, name: &str) -> Res<()> {
         let mut payload = vec![0u8; PKT - HDR];
-        let ascii: Vec<u8> = name.bytes().filter(|b| b.is_ascii_graphic() || *b == b' ').collect();
-        if ascii.is_empty() || ascii.len() > 32 {
-            return Err(format!("macro name {name:?} has to be 1..32 ASCII characters"));
+        let ascii: Vec<u8> = name
+            .bytes()
+            .filter(|b| b.is_ascii_graphic() || *b == b' ')
+            .take(32)
+            .collect();
+        if ascii.is_empty() {
+            return Err(format!("macro name {name:?} has no ASCII character to write"));
         }
         payload[..ascii.len()].copy_from_slice(&ascii);
         self.write(

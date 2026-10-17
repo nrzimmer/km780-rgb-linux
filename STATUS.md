@@ -72,6 +72,10 @@ the G.SKILL UI offering macros only on the G keys is a firmware limit, not an
 interface choice. The app refuses `0xB4` outside G1–G6 with a warning naming
 the key. Details in `docs/09` §7b.2.
 
+A macro **written by this app** plays too: `F13`/2.5 s/`F14`/2.5 s/`F15` came
+out on the listener with 2.55 s and 2.56 s between events. The cycle closes
+end to end — record, encode, write to the three banks, name, assign, play.
+
 What is still unmeasured is the field that would hold a **per-key index**, if
 it exists at all — in practice the two G keys tested both play index 0.
 
