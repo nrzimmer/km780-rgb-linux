@@ -217,3 +217,95 @@ Comparing the two gave the exact byte, first time, without writing anything.
 It stands as the procedure for the fields still missing (108 vs 119, 72–107):
 take the portrait, work the control **on the keyboard itself**, and compare. No
 writing needed at all.
+
+---
+
+## 9. 108 vs 119: there are **three** toggles, not two  [C]
+
+### What brightness at 0 proved
+
+Pressing the brightness key until the keyboard went dark (four presses, 4→0),
+the diff against the portrait showed **a single byte**:
+
+    byte 11: 4 -> 0
+
+Not 108, not 119, not the color matrix. That is: **"going dark via brightness"
+is just byte 11**, and it confirms once more that the firmware applies the
+intensity without the host pre-multiplying the color. The 108 and 119 toggles
+are **app-side only** settings — the keyboard has no key for them.
+
+### There is a third toggle, byte 107  [C]
+
+Separating, across the 11 captures, the host's writes (`0x02`) from the
+keyboard's answers (`0x82`), three bytes behave like toggles, with a clear
+pattern and rare inversions:
+
+| Byte | Pattern | Off-pattern | Captures where it flips |
+|---|---|---|---|
+| 107 | 1 | `0` in 2 writes | `08-closing` |
+| 108 | 1 | `0` in 6 writes | `05-macros`, `08-closing` |
+| 119 | 0 | `1` in 8 writes | `03-config`, `08-closing` |
+
+Each inversion appears **in pairs**, 0.2 to 1 s apart — it is the two-writes-
+per-UI-action pattern that byte 106 alternates with. So that is 1, 3 and 4
+*actions*, not 2, 6 and 8.
+
+`19-capture-08-closing.md` §4 spoke of "the two toggles". **There are three.**
+
+### And the app has exactly three  [C]
+
+In `Setting.dll`'s block of configuration keys (offset `0x24d6e0` onwards,
+UTF-16), the three appear in sequence:
+
+    LightBrightness
+    LightDisable
+    BacklightDisable
+    LightVolumeDisable
+    KeyboardMode
+
+Three `Disable` keys for three toggle bytes. The counts match exactly.
+
+### `119 = LightVolumeDisable`  [C]
+
+By elimination within `03-config`, whose exercised controls are — by the
+document's own title — **polling rate, repeat delay and volume display**.
+Polling is byte 8, repeat delay goes in `0x0A`, and the **only toggle byte that
+moves in that capture is 119**. Neither 107 nor 108 moves there.
+
+### `107` and `108` are `LightDisable` and `BacklightDisable`  [I]
+
+In some order. Both candidates are named and the set is closed, but **which is
+which did not come out**. The key order in the INI suggests
+`107 = LightDisable` and `108 = BacklightDisable`, since 107 comes before 108
+just as `LightDisable` comes before `BacklightDisable` — but that is
+configuration-file key order, not proof of packet layout.
+
+It is settled by writing one of the two and looking at the keyboard, or by
+decompiling the stretch that builds the payload.
+
+## 10. The key block also describes LED Sleep  [C]
+
+`09-protocol.md` §9 item 15 says LED Sleep "has not been captured yet". The
+configuration block shows **how it is parameterized**:
+
+    SleepMode        SleepMin        SleepEffectKind
+    SleepEffectName  SleepEffectID
+
+That is: a mode, a **time in minutes** and an **effect** (kind, name and ID) —
+the same `Kind/Name/ID` triple the ordinary effects use. The neighbouring
+feature, the Timer key, has the same shape:
+
+    AlertEffect   AlertOnScreen   AlertMin
+    AlertEffectKind   AlertEffectName   AlertEffectID
+
+`AlertOnScreen` confirms, from the binary side, what `19` §6 already said: the
+OSD is drawn by the PC.
+
+Whether those parameters ever reach the keyboard or stay in the app, as happens
+with a **Text**'s content, remains unanswered.  `[?]`
+
+## 11. Note: there is no Windows key lock key  [C]
+
+No key containing `Win` or `Lock` exists in the block. Consistent with byte 109
+(§8): the lock is a **keyboard** function, toggled by the bag-symbol key, and
+the app does not configure it.

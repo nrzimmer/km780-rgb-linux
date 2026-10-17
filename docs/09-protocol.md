@@ -285,11 +285,11 @@ profile with `0x82` and rewrites it unchanged with `0x02` at boot.
 | 15–71 | 57 | 4-byte records; the 4th of each is the **duration** (see 7.2) | [I] |
 | 72–105 | 34 | the rest of the configuration block | [?] |
 | 106 | 1 | a flag alternating between the two writes of each action | [C] |
-| 107 | 1 | [?] | [?] |
-| 108 | 1 | lighting toggle (all lighting or volume display) | [I] |
+| **107** | 1 | **toggle**: `LightDisable` or `BacklightDisable`, default 1 | **[I]** |
+| **108** | 1 | **toggle**: the other of the two, default 1 | **[I]** |
 | **109** | 1 | **Windows key lock** (0/1) — the bag-symbol key | **[C]** |
 | 110–118 | 9 | **three RGB triples** stored in the profile — pure red `(255,0,0)` on this keyboard, matching mode 1's matrix | **[C]** |
-| **119** | 1 | **volume display** (0/1) | [I] |
+| **119** | 1 | **volume display** (`LightVolumeDisable`), default 0 | **[C]** |
 | **120–263** | **144** | **key assignment table**: 1 byte per slot, the HID usage of the assigned function (see 5.1) | **[C]** |
 
 ### 5.1 The table at bytes 120–263
@@ -692,7 +692,7 @@ ruled out in the test. It still has no known function. [?]
 | 7 | `0x0B`, `0x12`, `0x15` | **solved** — 144 bytes, one per slot, at byte 8, `22-gaps-solved.md` §1 [C] |
 | 7b | `0x0E`, `0x0F` | **solved** — 3 slots of 71 bytes at 8/79/150, each one `[2 hdr][3 channels × 23 steps]`, `22-gaps-solved.md` §4 [C] |
 | 8 | `0x07`, `0x0D`, `0x16` | role known (opening / frame / end of init), payload never varied [I] |
-| 9 | byte 108 vs byte 119 | they are **two distinct toggles**; likely assignment 119=volume display, 108=all lighting [I] — `docs/19` §4. The method that found the 109 settles these **without writing**: snapshot, work the control from the keyboard, diff — `23-hardware-validation.md` §8 |
+| 9 | the lighting toggles | **there are three, not two**: bytes 107, 108 and 119, and the app has exactly three switches (`LightDisable`, `BacklightDisable`, `LightVolumeDisable`). **119 solved** = volume display. 107 vs 108 is still [I] — `23-hardware-validation.md` §9 |
 | 10 | bytes 72–107 of the config block | partial: 75–77 = number of color stops |
 | 11 | bytes 6–7 of the header | zero across the 6,277 packets captured [C] |
 | 11b | `buf[5]` | **carries Ripple/Sonic in the `0x0B`**; zero everywhere else [C] |
@@ -701,7 +701,7 @@ ruled out in the test. It still has no known function. [?]
 | 14 | key function codes | **solved** — section 5.2 and `docs/17` |
 | 14b | the content of a **Text** | **does not go to the keyboard**, not even on "Save to Device Memory" — `docs/18` §6 [C] |
 | 14c | Disable vs Default | **solved** — Disable writes `0x00`, Default restores the native HID, `docs/18` §1 |
-| 15 | LED Sleep | not captured yet |
+| 15 | LED Sleep | **parameters known** from the binary's config block — `SleepMode`, `SleepMin` (minutes) and an effect `Kind/Name/ID`. Whether they go to the keyboard is still [?] — `23-hardware-validation.md` §10 |
 | 17 | the macro's Playback Option | a dropdown of 4 options, byte not located — `docs/21` §6 |
 | 15b | Timer Key | it is a **key on the keyboard**, not a setting: it emits `f6 01 04 07` — `docs/19` §5 |
 | 15c | OSD (On Screen Display) | it belongs to the app, drawn on the PC screen; it generates no USB traffic |

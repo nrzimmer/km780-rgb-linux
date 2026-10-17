@@ -9,6 +9,13 @@ capture: a capture only shows what the official UI does. They come out of here
   km780exp.py map                  show the mode payload annotated  (read only)
   km780exp.py watch [sec]          re-read in a loop; says which byte
                                    changed when you touch the keyboard (read only)
+  km780exp.py portrait <file>      save the full state              (read only)
+  km780exp.py diff <file>          compare against a portrait       (read only)
+
+  The portrait/diff pair is the method that found byte 109: take the portrait,
+  change the control ON THE KEYBOARD, compare. It finds the exact byte without
+  writing anything.
+
   km780exp.py byte <N> <value>     change one byte and confirm      WRITES
   km780exp.py sweep <start>-<end>  walk a range, one byte at a
                                    time, asking what changed        WRITES
@@ -101,6 +108,52 @@ def cmd_watch(kb, a):
     print('done.')
 
 
+def _portrait(kb):
+    return {'active': kb.active_mode(),
+            'modes': {m: list(kb.read_mode(m)) for m in (1, 2, 3)},
+            'colors': {m: [list(c) for c in kb.read_colors(m)] for m in (1, 2, 3)}}
+
+
+def cmd_portrait(kb, a):
+    """Saves the full state. Read only."""
+    target = a['rest'][0]
+    json.dump(_portrait(kb), open(target, 'w'))
+    print('portrait saved to %s (active mode: %d)' % (target, kb.active_mode()))
+
+
+def cmd_diff(kb, a):
+    """Compares the current state against a portrait. Read only.
+
+    This is the method that found byte 109: take the portrait, change the
+    control ON THE KEYBOARD, compare. Without writing anything.
+    """
+    v = json.load(open(a['rest'][0]))
+    now = _portrait(kb)
+    print('active mode: %d -> %d\n' % (v['active'], now['active']))
+    found = False
+    for m in (1, 2, 3):
+        before, after = v['modes'][str(m)], now['modes'][m]
+        diff = [i for i in range(K.PKT) if before[i] != after[i] and i != K.OFF_STATUS]
+        if diff:
+            found = True
+            print('mode %d -- %d byte(s) in the payload:' % (m, len(diff)))
+            for i in diff:
+                note = NOTES.get(i, '')
+                if i >= 120:
+                    sl = i - 120
+                    note = 'key %s (slot %d)' % (K.SLOTS[sl] if sl < len(K.SLOTS) else '?', sl)
+                print('   byte %3d: %3d -> %-3d  %s' % (i, before[i], after[i], note))
+        for ci in range(3):
+            a0, a1 = v['colors'][str(m)][ci], now['colors'][m][ci]
+            d = [i for i in range(K.NSLOTS) if a0[i] != a1[i]]
+            if d:
+                found = True
+                print('mode %d, channel %d -- %d color slot(s) changed: %s%s'
+                      % (m, ci + 1, len(d), d[:12], ' ...' if len(d) > 12 else ''))
+    if not found:
+        print('nothing changed -- no byte of the 3 modes nor of the color matrix')
+
+
 def _backup(kb, a):
     path = a['backup']
     if os.path.exists(path):
@@ -180,6 +233,7 @@ def cmd_sweep(kb, a):
 
 
 COMMANDS = {'events': (cmd_events, 0), 'map': (cmd_map, 0), 'watch': (cmd_watch, 0),
+            'portrait': (cmd_portrait, 1), 'diff': (cmd_diff, 1),
             'byte': (cmd_byte, 2), 'sweep': (cmd_sweep, 1), 'restore': (cmd_restore, 0)}
 
 
