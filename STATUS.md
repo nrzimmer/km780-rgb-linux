@@ -19,6 +19,19 @@ a prior portrait.
 | Color tooling | `tools/km780ctl.py` — **exercised end to end on hardware** |
 | Hardware-free tests | `tools/test_km780.py` — 24, all passing |
 
+## IN PROGRESS: Rust app with a GUI
+
+The user asked for a real app — GUI, Rust, buildable for Windows, to replace
+G.SKILL's. **The decisions are made and documented in
+`docs/29-app-rust.md`; not a line of code written yet.**
+
+Summary: egui/eframe 0.37, hidapi 2.6.7 with the `linux-static-libusb` backend
+(not hidraw, because `uaccess` gives an ACL to the USB node but not to
+`hidraw` — measured). v1 = read + static color, with **batch editing and an
+explicit `Apply`**: nothing goes to the keyboard on every click.
+
+Start by reading `docs/29`.
+
 ## `pyusb` is in the venv, not in the system
 
 Every command runs with the venv's interpreter:
@@ -124,5 +137,6 @@ The declared goal is met. Two directions, neither blocking the other:
     26   the 18 special keys, slot by slot
     27   0x0E/0x0F via the builder, effect catalog, effect 6
     28   remapping a key in the keyboard's memory, with no service
+    29   the Rust app: decisions and starting point  <-- start here
     12-21  one analysis per capture
     01-08, 11  the trail of how we got here
