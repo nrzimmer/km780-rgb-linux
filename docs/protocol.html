@@ -127,6 +127,8 @@ ol.seq .d{font-size:.84rem;color:var(--dim)}
 .cm .t{font-size:.58rem;color:var(--dim);line-height:1.2;display:block;min-height:1.2em}
 .cm.w{border-color:var(--f-cmd);box-shadow:inset 0 -3px 0 var(--f-cmd)}
 .cm.r{border-color:var(--f-page);box-shadow:inset 0 -3px 0 var(--f-page)}
+.cm.rb{border-color:var(--f-page);box-shadow:inset 0 -3px 0 var(--f-page);
+  background:repeating-linear-gradient(135deg,var(--paper) 0 4px,var(--accent-soft) 4px 5px)}
 .cm.ev{border-color:var(--f-idx);box-shadow:inset 0 -3px 0 var(--f-idx)}
 .cm.no{color:var(--f-zero);border-style:dashed}
 
@@ -199,8 +201,8 @@ footer{margin-top:4rem;padding-top:1.2rem;border-top:1px solid var(--rule);
     from decompiling <code>Setting.dll</code> and from the firmware.</p>
     <div class="meta">
       <span><b>264</b> bytes per packet</span>
-      <span><b>18</b> commands on the wire</span>
-  <span><b>23</b> send sites in the DLL</span>
+      <span><b>19</b> known commands</span>
+  <span><b>9</b> read/write pairs</span>
       <span><b>144</b> LED slots, 132 used</span>
       <span><b>3</b> modes</span>
     </div>
@@ -347,17 +349,29 @@ software</b>, so the active mode changes underneath the host.</p>
 <!-- ===================== COMMANDS ===================== -->
 <h2 id="commands">Command space</h2>
 <div class="col">
-<p>Bit 7 set = read. <b>Confirmed empirically</b> on six pairs
-(<code>0x01/0x81</code>, <code>0x02/0x82</code>, <code>0x05/0x85</code>,
-<code>0x09/0x89</code>, <code>0x0A/0x8A</code>, <code>0x12/0x92</code>), no
-longer inferred. <span class="conf c-c">C</span></p>
+<p>Bit 7 set = a read, <b>confirmed empirically</b> across <b>nine pairs</b> —
+no longer inferred. But the evidence comes from two sources of different
+strength, and the difference matters when deciding what to probe:</p>
+<ul style="margin:.6rem 0;padding-left:1.1rem">
+<li><b>Four seen answering on the wire</b> — <code>0x01/0x81</code>,
+<code>0x02/0x82</code>, <code>0x09/0x89</code>, <code>0x0A/0x8A</code>.
+<span class="conf c-c">C</span></li>
+<li><b>Five confirmed only in the binary</b> — <code>0x05/0x85</code>, plus
+<code>0x0B/0x8B</code>, <code>0x12/0x92</code> and <code>0x15/0x95</code>, which
+<code>FUN_100db460</code> emits with <code>buf[3]=0</code>. They do not appear
+in the captures because that function does not run on the exercised paths.
+<span class="conf c-c">C</span></li>
+</ul>
+<p><code>0x95</code> is the read of Changeling and <b>did not exist in any
+document</b> until this round.</p>
 </div>
 
 <div class="legend">
   <span><i style="--c:var(--f-cmd)"></i>write observed</span>
   <span><i style="--c:var(--f-page)"></i>read observed</span>
   <span><i style="--c:var(--f-idx)"></i>event device→host</span>
-  <span><i class="hatch"></i>never seen on the wire</span>
+  <span><i style="--c:var(--f-page);opacity:.55"></i>read only in the binary</span>
+  <span><i class="hatch"></i>never observed</span>
 </div>
 <div class="cmdgrid" id="cmdgrid"></div>
 
@@ -368,15 +382,26 @@ longer inferred. <span class="conf c-c">C</span></p>
   bit 7 set.</b> The "bit 7 means read" convention holds for the confirmed commands,
   not for arbitrary bytes. Recovery exists (<code>FWUpdate.exe</code> +
   the <code>.hex</code>), but it depends on a Windows machine.</p>
+  <p style="margin-top:.6rem"><b>The prime suspect is <code>0x96</code>.</b>
+  The confirmed read space ends at <code>0x95</code>, and the next byte would
+  be the read of <code>0x16</code> — the command that <b>opens the
+  session</b>, the init's first message. The limit landing exactly there and
+  the sweep starting to fail on the byte just above is too much of a coincidence.
+  There is no proving which byte it was, but do not probe that one.
+  <span class="conf c-i">I</span></p>
 </div>
 
 <div class="col">
-<p>The list is a <b>floor, not the complete set</b>. The scan of
-<code>Setting.dll</code> found 19 sites with an immediate command byte, but the
-binary has <b>37</b> <code>push 0x108</code>. The difference is sites that
-load the command from a register, out of the scan's reach — and that is what
-explains why <code>0x08</code>, which the abandoned repo calls the "LED Effect
-Database", does not appear in it. <span class="conf c-q">?</span></p>
+<p>The list is a <b>floor, not the complete set</b>. The xrefs of the
+<code>SetFeature</code> thunk give <b>23 send calls</b> — it was never the 37
+assumed, because the 37 <code>push 0x108</code> also include the
+<code>GetFeature</code>s. Today there is a located build site for 16 of the 18
+commands on the wire; only <code>0x07</code>'s is missing.</p>
+<p>What found the missing ones was looking for the <b>pair</b>
+<code>buf[0]=0x07</code> followed by <code>buf[1]=cmd</code> at consecutive
+offsets — that is what separates a packet's <code>0x07</code> from any old
+<code>0x07</code> in the code. Searching for a lone immediate drowns
+<code>0x0E</code> in hundreds of false positives.</p>
 </div>
 
 <h3>Timing</h3>
@@ -652,9 +677,10 @@ stop incremented byte 3. <span class="conf c-c">C</span></p>
 
 <h3><code>0x08</code> · the rasterized gradient</h3>
 <div class="col">
-<p>69 data bytes (8–76) = <b>3 channels × 23 steps</b>: the gradient of the
+<p>69 data bytes (8–76) = <b>3 channels × 23 steps</b>, planar: the effect's
 gradient interpolated step by step, <b>cyclically</b> — the last step wraps to
-to the first, because the effect runs in a loop. The values are quantized in
+the first, because the effect loops. Cut into lines of 23 from
+byte 8, a real packet aligns by itself into R, G and B. The values are quantized to
 <b>6 bits, stored shifted by 2</b>.</p>
 </div>
 
@@ -669,6 +695,16 @@ mirror. Values in raw bytes, as they go out on the wire.</p>
 <thead><tr><th class="m">byte</th><th class="m">00</th><th class="m">38</th><th class="m">4c</th><th class="m">60</th><th class="m">7c</th><th class="m">98</th><th class="m">c4</th><th class="m">e0</th><th class="m">fc</th></tr></thead>
 <tbody><tr><td><b>&gt;&gt; 2</b></td><td class="m">0</td><td class="m">14</td><td class="m">19</td><td class="m">24</td><td class="m">31</td><td class="m">38</td><td class="m">49</td><td class="m">56</td><td class="m">63</td></tr></tbody>
 </table>
+</div>
+
+<div class="col">
+<p><b>But the gradient block is not the whole packet.</b> 31 of the 37
+<code>0x08</code> packets captured stop at byte 76; <b>six go on</b>. One of
+them carries a second 69-byte block at 77–145, with the same cyclic shape. The
+other five carry only three <code>fc</code> bytes, at 152, 176 and 200 — 24
+apart, which is the stride of <code>0x0E</code>'s records, not the gradient's
+gradient. How many blocks there are, and what selects each one's format,
+is still open. <span class="conf c-q">?</span></p>
 </div>
 
 <!-- ===================== MACRO ===================== -->
@@ -770,15 +806,43 @@ left, and why.</p>
 <table>
 <thead><tr><th>Item</th><th>Why it is still open</th></tr></thead>
 <tbody>
-<tr><td class="m">0x0E, 0x0F</td><td>shape observed (base every 71 bytes, <code>fc</code> every 24), but the two regularities do not close into a layout. The function that builds them still has to be found.</td></tr>
-<tr><td class="m">0x08 beyond byte 76</td><td>the 69 gradient bytes are right, but bytes up to 200 vary too</td></tr>
-<tr><td class="m">6 send sites</td><td>of the 23 calls to SetFeature, 6 have not yet been assigned to a command</td></tr>
-<tr><td>the macro's Playback Option</td><td>a dropdown of 4 options; the byte was not located</td></tr>
-<tr><td class="m">byte 108 vs byte 119</td><td>they are two distinct toggles (all lighting, volume display); which is which is still to be said</td></tr>
-<tr><td class="m">bytes 72–107</td><td>partial: 75–77 = number of color stops</td></tr>
-<tr><td class="m">the 02 04 M 04 … event</td><td>6 occurrences, meaning unknown</td></tr>
+<tr><td class="m">internal layout of<br>0x0E and 0x0F</td><td>the function <b>was located</b>: <code>FUN_100d5060</code>, the same one that builds the <code>0x08</code> — all three are the same generator. It still has to be decompiled: 6,911 bytes in 5 non-contiguous stretches. <b>Only by decompilation.</b></td></tr>
+<tr><td class="m">blocks of the 0x08<br>after byte 76</td><td>they exist in 6 of the 37 packets, with a stride of 24 instead of 23. How many blocks, and what picks the format. <b>Only by decompilation.</b></td></tr>
+<tr><td class="m">the role of 0x07</td><td>the only command on the wire with no build site located. It appears once, at the end of init, as <code>07 07 00 15</code>.</td></tr>
+<tr><td>the macro's Playback Option</td><td>a dropdown of 4 options; the byte was not located. <b>Only by decompilation.</b></td></tr>
+<tr><td class="m">byte 108 vs byte 119</td><td>they are two distinct toggles (all lighting, volume display); which is which is still to be said. <b>Settleable by experiment</b> — see below.</td></tr>
+<tr><td class="m">bytes 72–107</td><td>partial: 75–77 = number of color stops. <b>Settleable by experiment.</b></td></tr>
+<tr><td class="m">the 02 04 M 04 … event</td><td>6 occurrences, meaning unknown. Listen to EP <code>0x83</code> while working the keyboard.</td></tr>
 <tr><td>LED Sleep</td><td>the control was never captured</td></tr>
 <tr><td class="m">reading page 0x09</td><td>the app never reads it. <b>Safe to test on Linux</b></td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="note">
+  <div class="hd">Why half the list now comes out on Linux</div>
+  <p>The Windows capture session could not settle 108 vs 119 for a structural
+  reason: <b>a capture only shows what the official UI does</b>. If the
+  software never exercises a field, it never appears on the wire.</p>
+  <p>On Linux the other half exists. Since <code>0x82</code> returns byte for
+  byte what <code>0x02</code> wrote, it is possible to <b>read the mode, change one
+  byte, write it back and look at the keyboard</b>. The items marked
+  "settleable by experiment" become half an hour at the bench instead of
+  reverse engineering.</p>
+  <p>With one caveat: this <b>writes</b> to the keyboard. The command is known and
+  the round-trip is symmetric, which is far safer than probing commands — but
+  it is a write. With a backup of the mode read beforehand, and one byte at a time.</p>
+</div>
+
+<h3>How to reproduce</h3>
+<div class="tscroll">
+<table>
+<thead><tr><th>To</th><th class="m">Command</th></tr></thead>
+<tbody>
+<tr><td>see which bytes vary, per command</td><td class="m">tools/vary.py --all</td></tr>
+<tr><td>detail of one command</td><td class="m">tools/vary.py 0x02</td></tr>
+<tr><td>find the packet sites in a PE</td><td class="m">tools/cmdsites.py Setting.dll</td></tr>
+<tr><td>reprocess a capture</td><td class="m">tools/extract.sh captures/NN.pcapng</td></tr>
 </tbody>
 </table>
 </div>
@@ -803,12 +867,14 @@ const SLOTS = {"0":[2049,"0x00","G/zone 0x801"],"1":[2050,"0x00","G/zone 0x802"]
 /* ---------- command matrix ---------- */
 const CMD = {
   0x01:["w","mode"],   0x02:["w","mode info"], 0x05:["w","macro"],
-  0x07:["w","?"],      0x08:["w","gradiente"], 0x09:["w","LED matrix"],
-  0x0A:["w","base"],   0x0B:["w","ripple"],    0x0D:["w","config"],
+  0x07:["w","?"],      0x08:["w","gradient"], 0x09:["w","LED matrix"],
+  0x0A:["w","base"],   0x0B:["w","ripple/sonic"], 0x0D:["w","config"],
   0x0E:["w","changel."],0x0F:["w","rain"],     0x12:["w","rain px"],
-  0x15:["w","changel."],0x16:["w","abre"],
+  0x15:["w","changel."],0x16:["w","open"],
   0x81:["r","mode"],   0x82:["r","mode info"], 0x89:["r","LED matrix"],
-  0x8A:["r","base"]
+  0x8A:["r","base"],
+  // confirmed in the binary (FUN_100db460), never seen on the wire
+  0x8B:["rb","read 0x0B"], 0x92:["rb","read 0x12"], 0x95:["rb","read 0x15"]
 };
 const g = document.getElementById("cmdgrid");
 for (const list of [[0x00,0x18],[0x80,0x98]]) {
