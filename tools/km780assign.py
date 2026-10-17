@@ -129,7 +129,10 @@ def main():
                                  'pass it with set %s=<hex>.' % (name, m, name))
                     code = g[key]
                 d[off] = code
-                g['%d/%d' % (m, slot)] = before
+                # DO NOT overwrite an original that is already saved: reapplying
+                # the same remap would record the new value as "previous" and
+                # destroy the undo.
+                g.setdefault('%d/%d' % (m, slot), before)
                 print('  mode %d  %-10s byte %3d: 0x%02x -> 0x%02x'
                       % (m, name, off, before, code))
             kb.write_mode(m, bytes(d))

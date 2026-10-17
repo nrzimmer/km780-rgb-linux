@@ -55,6 +55,9 @@ The declared goal is met. Two directions, neither blocking the other:
 
 - **Usability** — `--profile` with saved themes, restoring at boot (a systemd
   user unit), packaging. Needs no more reverse engineering.
+  Already done here: **remapping a key in the keyboard's memory** (`docs/28`),
+  which solves "give a key a function with no service". Timer is on F13 in all
+  modes.
 - **Protocol** — the gaps in the table below. `FUN_100d5060` has already been
   decompiled (`docs/27`): it closed `0x0E`/`0x0F` and revealed a ninth effect,
   **Checkpoint** (byte 10 = `8`), which the v2.04 UI did not offer. Testing it on
@@ -119,5 +122,7 @@ The declared goal is met. Two directions, neither blocking the other:
     24   0x16 and the session that nothing closes
     25   the physical matrix 15x9, 122 keys
     26   the 18 special keys, slot by slot
+    27   0x0E/0x0F via the builder, effect catalog, effect 6
+    28   remapping a key in the keyboard's memory, with no service
     12-21  one analysis per capture
     01-08, 11  the trail of how we got here
