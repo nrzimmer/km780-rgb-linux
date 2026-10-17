@@ -35,8 +35,7 @@ def main():
         if not 0 <= v <= 255:
             sys.exit('value %d out of 0-255' % v)
 
-    kb = K.KB()
-    try:
+    with K.Keyboard() as kb:
         d = bytearray(kb.read_mode(mode))
         orig = d[K.OFF_EFFECT]
         print('mode %d: byte 10 (effect) is %d (%s)'
@@ -58,8 +57,6 @@ def main():
             back = kb.read_mode(mode)[K.OFF_EFFECT]
             print('\nrestored: byte 10 = %d%s'
                   % (back, '' if back == orig else '  <-- FAILED, replug'))
-    finally:
-        kb.close()
 
 
 if __name__ == '__main__':
