@@ -2,7 +2,7 @@
 # official installers (see docs/06-binaries.md) and weigh ~486 MB.
 external/gds/**
 !external/gds/
-!external/gds/*.txt
+!external/gds/*.md
 
 # Ghidra project and venv
 ghidra-proj/
