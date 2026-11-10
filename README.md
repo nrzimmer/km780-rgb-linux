@@ -17,10 +17,11 @@ No working open-source solution covers this keyboard:
 
 - **OpenRGB** supports G.SKILL only on the memory line (Trident Z / Royal, over
   SMBus). No G.SKILL keyboard appears in its device list.
-- **`legonigel/KM780-RGB-Linux-Driver`** is the only project aimed at this
-  keyboard. It was abandoned in February 2017 after 3 commits and never worked
-  as an application — but it does describe the USB transport layer correctly,
-  which is credited and expanded in [`docs/01-transport.md`](docs/01-transport.md).
+- **[`legonigel/KM780-RGB-Linux-Driver`](https://github.com/legonigel/KM780-RGB-Linux-Driver)**
+  is the only project aimed at this keyboard. It was abandoned in February 2017
+  after 3 commits and never worked as an application — but it does describe the
+  USB transport layer correctly, which is credited and expanded in
+  [`docs/01-transport.md`](docs/01-transport.md).
 - **`sidewinderd`** targets Microsoft keyboards.
 - Running the vendor software in a VM with USB passthrough is reported not to
   detect the keyboard at all.
@@ -113,7 +114,8 @@ This project documents the protocol by **observing** the device and the traffic
 the vendor software produces. It redistributes no vendor software, firmware or
 installer; [`docs/06-binaries.md`](docs/06-binaries.md) records where those were
 obtained and how they were extracted, so the work can be reproduced from the
-vendor's own downloads.
+vendor's own downloads. Every third-party source is listed in
+[`docs/00-references.md`](docs/00-references.md), by link, never by copy.
 
 ## License
 

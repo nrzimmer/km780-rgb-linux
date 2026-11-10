@@ -1,9 +1,9 @@
 # USB transport layer (known)
 
-Source: `legonigel/KM780-RGB-Linux-Driver` (GPL-3), `src/keyboard.cpp` —
-a copy in `external/repo-legonigel/`. The project never worked as an
-application, but the transport is correct and confirmed against the hardware
-(see below).
+Source: [`legonigel/KM780-RGB-Linux-Driver`](https://github.com/legonigel/KM780-RGB-Linux-Driver)
+(GPL-3.0), `src/keyboard.cpp`. The project never worked as an application, but
+the transport is correct and confirmed against the hardware (see below). Its
+code is not copied here — see [`00-references.md`](00-references.md).
 
 ## Device
 
