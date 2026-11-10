@@ -4,10 +4,17 @@ external/gds/**
 !external/gds/
 !external/gds/*.txt
 
-# Ghidra project, venv, converted firmware
+# Ghidra project and venv
 ghidra-proj/
 venv/
-firmware/*.bin
+
+# Firmware and recovery-kit binaries: they are G.SKILL's, not ours to
+# redistribute. Re-extractable from the official installer (docs/06-binaries.md).
+# Only the .md documentation stays versioned.
+firmware/**
+!firmware/
+!firmware/recovery/
+!firmware/**/*.md
 
 # Keyboard state (machine-specific)
 backup-matrix*.json
