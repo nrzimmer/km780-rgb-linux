@@ -53,48 +53,27 @@ rest of the repository. The `SLOTS` table keeps the canonical names from
 
 Start by reading `docs/30`.
 
+### Macros: done, with one open question
+
+Recording through the window, event-by-event editing, a file in
+`~/.config/km780/macros/`, reading from the keyboard (`0x85`), writing (`0x05`)
+and the name in the database (`0x0A`). CLI: `--macro-dump`, `--macro-import`,
+`--macro-list`, `--macro-write NAME [mode]`, `--macro-erase MODE`,
+`--macro-name NAME [index]`, `--base-dump`, `--base-read PAGE SUB`,
+`--base-clear`.
+
+Validated end to end on hardware: a macro written by this app plays when a G key
+is pressed. What the whole path taught is in `docs/09` §7b, §7b.2 and §7c.1, and
+the account is in `docs/30`.
+
+**Open:** does each G key run its own macro index, or do they all run index 0?
+G1 and G2 played the same macro, but there was only **one** macro recorded — the
+test does not tell the two hypotheses apart. See the plan further down.
+
 ### What the app does NOT do yet
 
 In order of size. Nothing here is blocked by missing reverse engineering — what
 is missing is code, except where marked.
-
-**Macros — recording, editing and writing are done; the key binding is
-missing.** The app records a macro through the window, edits it event by
-event, saves it to `~/.config/km780/macros/`, reads what is on the keyboard
-(`0x85`) and writes it (`0x05`). From the CLI: `--macro-dump`,
-`--macro-import`, `--macro-list`, `--macro-write NAME [mode]`,
-`--macro-erase MODE`.
-
-**`0xB4` was solved on the keyboard** on 2026-10-17: it runs the macro in
-bank 1 of the active mode, and **only on a G key** (G1 and G2 played the same
-macro; Timer and LCtrl played nothing, and LCtrl stayed mute afterwards). So
-the G.SKILL UI offering macros only on the G keys is a firmware limit, not an
-interface choice. The app refuses `0xB4` outside G1–G6 with a warning naming
-the key. Details in `docs/09` §7b.2.
-
-**The `0x0A` base reader is done** (`--base-dump`, `--base-read`,
-`--base-clear`). It showed that page `0x09` has sixteen sub-pages, that only
-`0x02`–`0x0F` retain data, and that **the macro name was never stored on the
-keyboard — not even when the official app wrote it**, because it uses
-sub-page `0x00`, which discards. It also confirmed that byte 0 of sub-page
-`0a` of the mode pages is the mode index. See `docs/09` §7c.1.
-
-A macro **written by this app** plays too: `F13`/2.5 s/`F14`/2.5 s/`F15` came
-out on the listener with 2.55 s and 2.56 s between events. The cycle closes
-end to end — record, encode, write to the three banks, name, assign, play.
-
-What is still unmeasured is the field that would hold a **per-key index**, if
-it exists at all — in practice the two G keys tested both play index 0.
-
-Protocol gaps closed along the way, all measured on 2026-10-17 and detailed in
-`docs/09` §7b: `0x85` reads a macro (which had never been read here), a virgin
-bank answers `0xFF`, an immediate re-read after the write returns the old
-content, and **all three banks are mandatory** — with one or two the keyboard
-ACKs and does not store, the third packet closes the write the way the third
-channel of `0x09` does. The `0x0D` frame is not part of this.
-
-It also became known that the macros from the Windows captures **were still on
-the keyboard**, in modes 1 and 2 — an independent validation of the decoder.
 
 **Editing effects — only the on/off is done.** Today the app changes byte 10 and
 that is it; the animation comes out with whatever is already stored. Missing:
@@ -113,13 +92,12 @@ that is it; the animation comes out with whatever is already stored. Missing:
 **Other mode fields, all documented and none in the app:**
 
 - **polling rate**, byte 8 (1/2/4/8 ms = 1000/500/250/125 Hz), `docs/14`
-- **the three toggles** in bytes 107, 108 and 109 — 109 is the Windows key
-  lock, confirmed on the hardware (`docs/23` §8). Which is which in the other
-  two is still missing. `[?]` partial
-- **Macro and Text as a key function** (`0xB4`, `0xB8`): the app's remapping
-  offers only F13–F24 and raw hex. Text, by the way, **does not work** — the
-  content never reaches the keyboard, only the name, so a key with Text only
-  works with the G.SKILL app running.
+- **the three toggles** at bytes 107, 108 and 109 — 109 is the Windows key
+  lock, confirmed on hardware (`docs/23` §8). Which is which in the other two is
+  still unsaid. Partly `[?]`
+- **Text as a key function** (`0xB8`) — **won't happen**: the content never
+  reaches the keyboard, only the name, so a key with Text only works with
+  G.SKILL's app running. `0xB4` is already in the catalog, restricted to G1–G6.
 - **LED Sleep** — never identified. `[?]`
 
 **A protocol gap closed along the way:** `0xAA` and `0xAB` are the two
